@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-50 -100 300 300" shape-rendering="geometricPrecision" text-rendering="geometricPrecision" image-rendering="optimizeQuality">
+  <defs>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+    
+    <linearGradient id="b" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFca28" style="stop-color: oklab(0.8536 0.0381 0.1462)"/>
+      <stop offset="10%" stop-color="#FFca28" style="stop-color: oklab(0.8536 0.0381 0.1462)"/>
+      <stop offset="90%" stop-color="#42a5f5" style="stop-color: oklab(0.7071 -0.0543 -0.2234)"/>
+      <stop offset="100%" stop-color="#42a5f5" style="stop-color: oklab(0.7071 -0.0543 -0.2234)"/>
+    </linearGradient>
+
+    <linearGradient id="a" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#42a5f5" style="stop-color: oklab(0.7071 -0.0543 -0.2234)"/> 
+      <stop offset="10%" stop-color="#42a5f5" style="stop-color: oklab(0.7071 -0.0543 -0.2234)"/> 
+      <stop offset="40%" stop-color="#1565c0" style="stop-color: oklab(0.4975 -0.0463 -0.2536)"/>
+      <stop offset="60%" stop-color="#0f766e" style="stop-color: oklab(0.4851 -0.0906 -0.0423)"/> 
+      <stop offset="90%" stop-color="#10b981" style="stop-color: oklab(0.6971 -0.1652 0.0471)"/>
+      <stop offset="100%" stop-color="#10b981" style="stop-color: oklab(0.6971 -0.1652 0.0471)"/>
+    </linearGradient>
+
+    <linearGradient id="c" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#10b981" style="stop-color: oklab(0.6971 -0.1652 0.0471)"/> 
+      <stop offset="10%" stop-color="#10b981" style="stop-color: oklab(0.6971 -0.1652 0.0471)"/>
+      <stop offset="90%" stop-color="#9333ea" style="stop-color: oklab(0.5816 0.2292 -0.2597)"/> 
+      <stop offset="100%" stop-color="#9333ea" style="stop-color: oklab(0.5816 0.2292 -0.2597)"/>
+    </linearGradient>
+
+    <linearGradient id="d" x1="100%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#9333ea" style="stop-color: oklab(0.5816 0.2292 -0.2597)"/> 
+      <stop offset="10%" stop-color="#9333ea" style="stop-color: oklab(0.5816 0.2292 -0.2597)"/>
+      <stop offset="50%" stop-color="#f59e0b" style="stop-color: oklab(0.7636 0.0631 0.1534)"/>
+      <stop offset="90%" stop-color="#FFca28" style="stop-color: oklab(0.8536 0.0381 0.1462)"/>
+      <stop offset="100%" stop-color="#FFca28" style="stop-color: oklab(0.8536 0.0381 0.1462)"/>
+    </linearGradient>
+  </defs>
+
+  <path d="M45 95 c50 0 60-90 110-90 a45 45 0 0 1 0 90 c-50 0 -60-90 -110-90 a45 45 0 0 0 0 90 Z" stroke="37" fill="none" stroke-width="38" stroke-linecap="round" stroke-linejoin="round" filter="url(#shadow)"/>
+  
+  <path d="M45 95 c50 0 60-90 110-90" stroke="url(#a)" fill="none" stroke-width="38" stroke-linecap="round"/>
+  <path d="M45 5 a45 45 0 0 0 0 90" stroke="url(#b)" fill="none" stroke-width="38" stroke-linecap="round"/>
+  <path d="M155 5 a45 45 0 0 1 0 90" stroke="url(#c)" fill="none" stroke-width="38" stroke-linecap="round"/>
+  <path d="M155 95 c-50 0 -60-90 -110-90" stroke="url(#d)" fill="none" stroke-width="38" stroke-linecap="round"/>
+</svg>

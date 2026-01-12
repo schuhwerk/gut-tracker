@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Track your food, sleep, and symptoms to discover how they affect your gut health. Gut Tracker helps you identify patterns and improve your intestinal well-being.">
+    <title>Gut Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            900: '#121212',
+                            800: '#1e1e1e',
+                            700: '#2d2d2d',
+                        },
+                        primary: '#047857', // Emerald 700
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#047857">
+    <!-- SVG Favicon -->
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icons/icon.png">
+    <link rel="stylesheet" href="style.css?v=1.2">
+    <style>
+        /* Custom scrollbar for dark mode */
+        body::-webkit-scrollbar { width: 8px; }
+        body::-webkit-scrollbar-track { background: #121212; }
+        body::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        .no-tap-highlight { -webkit-tap-highlight-color: transparent; }
+        
+        /* SVG Icons classes */
+        .icon { width: 24px; height: 24px; display: inline-block; vertical-align: middle; }
+    </style>
+</head>
+<body class="bg-dark-900 text-gray-200 font-sans min-h-screen no-tap-highlight">
+    <!-- Sync indicator removed/hidden -->
+    <!-- <div id="sync-indicator"></div> -->
+
+    <main id="app" class="max-w-md mx-auto min-h-screen relative flex flex-col">
+        
+        <!-- LOADING OVERLAY -->
+        <div id="loading-overlay" class="hidden fixed inset-0 bg-black/80 z-50 flex flex-col items-center justify-center backdrop-blur-sm">
+            <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-emerald-500 mb-4"></div>
+            <p id="loading-text" class="text-white font-bold animate-pulse">Processing...</p>
+        </div>
+
+        <!-- LOGIN VIEW -->
+        <div id="view-login" class="view hidden flex-1 flex flex-col justify-center px-6">
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center p-4 rounded-full bg-dark-800 mb-4 text-emerald-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-10 h-10">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" />
+                    </svg>
+                </div>
+                <h1 class="text-3xl font-bold text-white tracking-tight">Gut Tracker</h1>
+                <p class="text-gray-400 mt-2">Track your inputs & outputs.</p>
+            </div>
+            
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <input type="text" id="username" name="username" placeholder="Username" required autocomplete="username"
+                        class="w-full bg-dark-800 border border-dark-700 rounded-xl px-4 py-3 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors text-white placeholder-gray-400">
+                </div>
+                <div>
+                    <input type="password" id="password" name="password" placeholder="Password" required autocomplete="current-password"
+                        class="w-full bg-dark-800 border border-dark-700 rounded-xl px-4 py-3 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors text-white placeholder-gray-400">
+                </div>
+                <button type="submit" 
+                    class="w-full bg-primary hover:bg-emerald-600 text-white font-semibold py-3 rounded-xl transition-all transform active:scale-95 shadow-lg shadow-emerald-900/20">
+                    Sign In
+                </button>
+                <button type="button" onclick="app.navigate('dashboard')"
+                    class="w-full bg-dark-800 hover:bg-dark-700 text-gray-400 font-semibold py-3 rounded-xl transition-all">
+                    Continue Offline
+                </button>
+            </form>
+            <button onclick="app.navigate('create-user')" class="w-full text-center mt-6 text-sm text-gray-400 hover:text-white transition-colors">
+                New here? Create Account
+            </button>
+        </div>
+
+        <!-- CREATE USER VIEW -->
+        <div id="view-create-user" class="view hidden flex-1 flex flex-col justify-center px-6">
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center p-4 rounded-full bg-dark-800 mb-4 text-emerald-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-10 h-10">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM3.75 15h2.25c.04 0 .08.002.12.005a9.05 9.05 0 0 1 12.394.002c.039-.003.08-.005.119-.005h2.25M3.75 15a2.25 2.25 0 0 0-2.25 2.25v2.25c0 .414.336.75.75.75h19.5a.75.75 0 0 0 .75-.75v-2.25a2.25 2.25 0 0 0-2.25-2.25" />
+                    </svg>
+                </div>
+                <h1 class="text-3xl font-bold text-white tracking-tight">Create Account</h1>
+                <p class="text-gray-400 mt-2">Start tracking your health.</p>
+            </div>
+            
+            <form id="create-user-form" class="space-y-4">
+                <div>
+                    <input type="text" id="new-username" name="username" placeholder="Username" required autocomplete="username"
+                        class="w-full bg-dark-800 border border-dark-700 rounded-xl px-4 py-3 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors text-white placeholder-gray-400">
+                </div>
+                <div>
+                    <input type="password" id="new-password" name="password" placeholder="Password" required autocomplete="new-password"
+                        class="w-full bg-dark-800 border border-dark-700 rounded-xl px-4 py-3 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors text-white placeholder-gray-400">
+                </div>
+                <button type="submit" 
+                    class="w-full bg-primary hover:bg-emerald-600 text-white font-semibold py-3 rounded-xl transition-all transform active:scale-95 shadow-lg shadow-emerald-900/20">
+                    Create User
+                </button>
+            </form>
+            <button onclick="app.navigate('login')" class="w-full text-center mt-6 text-sm text-gray-400 hover:text-white transition-colors">
+                Back to Login
+            </button>
+        </div>
+
+        <div id="view-dashboard" class="view hidden flex-1 flex flex-col">
+            <header class="p-4 bg-dark-900/90 backdrop-blur-md sticky top-0 z-10 border-b border-dark-800">
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center gap-3">
+                        <img src="icons/icon.png" alt="Gut Logo" class="w-8 h-8">
+                        <h2 class="text-xl font-bold text-white">Timeline</h2>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="btn-status-icon" onclick="app.showStatusBox()" class="hidden text-orange-400 hover:text-orange-300 transition-colors" title="Status Alert">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                            </svg>
+                        </button>
+                        <button onclick="app.navigate('diagram')" class="text-gray-400 hover:text-white" title="Charts">
+                        <button id="btn-status-icon" onclick="app.showStatusBox()" class="hidden text-orange-400 hover:text-orange-300 transition-colors" title="Status Alert">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                            </svg>
+                        </button>
+                        <button onclick="app.navigate('diagram')" class="text-gray-400 hover:text-white" title="Charts">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 0 0 6 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0 1 18 16.5h-2.25m-7.5 0h7.5m-7.5 0-1 3m8.5-3 1 3m0 0 .5 1.5m-.5-1.5h-9.5m0 0-.5 1.5m.75-9 3-3 2.148 2.148A12.061 12.061 0 0 1 16.5 7.605" />
+                            </svg>
+                        </button>
+                        <button onclick="app.navigate('settings')" class="text-gray-400 hover:text-white" title="Settings">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M10.343 3.94c.09-.542.56-.94 1.11-.94h1.093c.55 0 1.02.398 1.11.94l.149.894c.07.424.384.764.78.93.398.164.855.142 1.205-.108l.737-.527a1.125 1.125 0 0 1 1.45.12l.773.774c.39.389.44 1.002.12 1.45l-.527.737c-.25.35-.272.806-.107 1.204.165.397.505.71.93.78l.893.15c.543.09.94.56.94 1.109v1.094c0 .55-.397 1.02-.94 1.11l-.893.149c-.425.07-.765.383-.93.78-.165.398-.143.854.107 1.204l.527.738c.32.447.269 1.06-.12 1.45l-.774.773a1.125 1.125 0 0 1-1.449.12l-.738-.527c-.35-.25-.806-.272-1.203-.107-.397.165-.71.505-.781.929l-.149.894c-.09.542-.56.94-1.11.94h-1.094c-.55 0-1.019-.398-1.11-.94l-.148-.894c-.071-.424-.384-.764-.781-.93-.398-.164-.854-.142-1.204.108l-.738.527c-.447.32-1.06.269-1.45-.12l-.773-.774a1.125 1.125 0 0 1-.12-1.45l.527-.737c.25-.35.273-.806.108-1.204-.165-.397-.505-.71-.93-.78l-.894-.15c-.542-.09-.94-.56-.94-1.109v-1.094c0-.55.398-1.02.94-1.11l.894-.149c.424-.07.765-.383.93-.78.165-.398.143-.854-.107-1.204l-.527-.738a1.125 1.125 0 0 1 .12-1.45l.773-.773a1.125 1.125 0 0 1 1.45-.12l.732.527c.35.25.807.272 1.204.107.397-.165.71-.505.78-.929l.15-.894Z" />
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Hydration Meter -->
+                <div class="bg-dark-800/50 rounded-xl p-3 border border-dark-700/50">
+                    <div class="flex justify-between items-end mb-2">
+                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1">
+                            <svg class="w-3 h-3 text-cyan-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 21.5c-3.5 0-6.4-2.9-6.4-6.4 0-3.5 6.4-11.6 6.4-11.6s6.4 8.1 6.4 11.6c0 3.5-2.9 6.4-6.4 6.4z"/></svg>
+                            Hydration
+                        </span>
+                        <div class="flex items-center gap-2">
+                            <span id="hydration-label" class="text-xs font-bold text-white">0 / 2.5L</span>
+                        </div>
+                    </div>
+                    <div class="w-full bg-dark-700 rounded-full h-1.5 overflow-hidden">
+                        <div id="hydration-bar" class="bg-gradient-to-r from-cyan-600 to-cyan-400 h-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Login Warning Box -->
+            <div id="status-box" class="hidden mx-4 mt-4 p-4 bg-orange-900/20 border border-orange-500/30 rounded-2xl relative">
+                <button onclick="app.dismissStatusBox()" class="absolute top-2 right-2 text-orange-500/50 hover:text-orange-500 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+                <h3 id="status-box-title" class="text-orange-400 font-bold mb-1 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                    </svg>
+                    <span>Status</span>
+                </h3>
+                <p id="status-box-msg" class="text-xs text-gray-300 leading-relaxed mb-3">
+                    Message
+                </p>
+                <button id="status-box-action" class="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-2 rounded-lg text-xs shadow-lg shadow-orange-900/20">
+                    Action
+                </button>
+            </div>
+
+            <!-- Welcome Box -->
+            <div id="welcome-box" class="hidden mx-4 mt-4 p-4 bg-emerald-900/20 border border-emerald-500/30 rounded-2xl relative">
+                <button onclick="app.dismissWelcomeBox()" class="absolute top-2 right-2 text-emerald-500/50 hover:text-emerald-500 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+                <h3 class="text-emerald-400 font-bold mb-1 flex items-center gap-2">
+                    <span class="text-lg">👋</span> Welcome to Gut Tracker
+                </h3>
+                <p class="text-xs text-gray-300 leading-relaxed mb-3">
+                    Track your food, sleep, and symptoms to discover how they affect your gut health. This app was built to help identify patterns and improve your life by relating what you consume and how you rest to your intestinal well-being.
+                </p>
+                <div class="space-y-2">
+                    <div class="flex items-start gap-2 text-[10px] text-emerald-400/80">
+                        <span class="font-bold">LOG:</span>
+                        <span class="text-gray-400">Use the bottom buttons to manually log food, drinks, stools, sleep or feelings.</span>
+                    </div>
+                    <div class="flex items-start gap-2 text-[10px] text-emerald-400/80">
+                        <span class="font-bold">AI:</span>
+                        <span class="text-gray-400">Tap the center camera or hold the mic button to quickly log using AI.</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="timeline" class="flex-1 p-4 space-y-4 overflow-y-auto pb-64">
+                <p class="text-center text-gray-400 py-10">Loading entries...</p>
+            </div>
+
+            <!-- Floating Action Bar -->
+            <div class="fixed bottom-0 left-0 w-full bg-gradient-to-t from-dark-900 via-dark-900/90 to-transparent pb-6 pt-12 z-20 flex flex-col items-center gap-4 px-4">
+                
+                <div class="flex gap-4 items-center justify-center w-full max-w-md">
+                    <button onclick="app.resetForm('form-food'); app.navigate('add-food')" class="flex flex-col items-center justify-center w-12 h-12 rounded-full bg-dark-800 border border-dark-700 shadow-xl hover:bg-dark-700 transition-all text-[10px] font-bold text-gray-400">
+                        FOOD
+                    </button>
+
+                    <!-- CAMERA AI BUTTON -->
+                    <button id="btn-camera-magic" aria-label="Scan food with camera" onclick="document.getElementById('magic-camera-input').click()" class="flex flex-col items-center justify-center w-20 h-20 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-2xl shadow-emerald-500/40 hover:scale-105 transition-all">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" />
+                        </svg>
+                        <input type="file" id="magic-camera-input" accept="image/*" capture="environment" class="hidden" onchange="app.processMagicImage(this)">
+                    </button>
+
+                    <!-- VOICE AI BUTTON -->
+                    <button id="btn-voice-magic" aria-label="Record voice input" class="flex flex-col items-center justify-center w-20 h-20 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-2xl shadow-indigo-500/40 hover:scale-105 transition-all">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
+                        </svg>
+                    </button>
+
+                    <button onclick="app.resetForm('form-stool'); app.navigate('add-stool')" class="flex flex-col items-center justify-center w-12 h-12 rounded-full bg-dark-800 border border-dark-700 shadow-xl hover:bg-dark-700 transition-all text-[10px] font-bold text-gray-400">
+                        STOOL
+                    </button>
+                </div>
+
+                <div class="flex gap-4">
+                    <button onclick="app.resetForm('form-activity'); app.navigate('add-activity')" class="px-3 py-1 rounded-full bg-dark-800 border border-dark-700 text-[10px] font-bold text-gray-400 hover:text-white">
+                        ACTIVITY
+                    </button>
+                    <button onclick="app.resetForm('form-drink'); app.navigate('add-drink')" class="px-3 py-1 rounded-full bg-dark-800 border border-dark-700 text-[10px] font-bold text-gray-400 hover:text-white">
+                        DRINK
+                    </button>
+                    <button onclick="app.resetForm('form-sleep'); app.navigate('add-sleep')" class="px-3 py-1 rounded-full bg-dark-800 border border-dark-700 text-[10px] font-bold text-gray-400 hover:text-white">
+                        SLEEP
+                    </button>
+                    <button onclick="app.resetForm('form-feeling'); app.navigate('add-feeling')" class="relative px-3 py-1 rounded-full bg-dark-800 border border-dark-700 text-[10px] font-bold text-gray-400 hover:text-white">
+                        FEELING
+                        <div id="feeling-btn-dot" title="You haven't logged your mood today!" class="hidden absolute -top-1 -right-1 w-3 h-3 bg-orange-500 rounded-full border-2 border-dark-900 z-10 animate-pulse"></div>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- DIAGRAM VIEW -->
+        <div id="view-diagram" class="view hidden flex-1 flex flex-col bg-dark-900">
+             <header class="p-4 border-b border-dark-800 flex items-center gap-4">
+                <button onclick="history.back()" class="text-gray-400 hover:text-white">← Back</button>
+                <h2 class="text-lg font-bold">Analysis (30 Days)</h2>
+            </header>
+            <div class="flex-1 p-4 overflow-y-auto space-y-6">
+                <!-- Stool & Sleep Chart -->
+                <div class="bg-dark-800 p-4 rounded-xl border border-dark-700">
+                    <h3 class="text-gray-300 font-bold mb-4 flex items-center gap-2">
+                        <span>💩 & 😴</span> Overview
+                    </h3>
+                    <div class="h-64 relative">
+                        <canvas id="chart-stool-sleep"></canvas>
+                    </div>
+                </div>
+
+                <!-- Symptom Intensity -->
+                <div class="bg-dark-800 p-4 rounded-xl border border-dark-700">
+                    <h3 class="text-gray-300 font-bold mb-4 flex items-center gap-2">
+                         <span>✨</span> Mood & Symptoms
+                    </h3>
+                    <div class="h-48 relative">
+                        <canvas id="chart-symptoms"></canvas>
+                    </div>
+                </div>
+
+                <div class="p-4 text-center text-xs text-gray-600">
+                    Showing data from the last 30 days.
+                </div>
+            </div>
+        </div>
+
+        <!-- SETTINGS VIEW -->
+        <div id="view-settings" class="view hidden flex-1 flex flex-col bg-dark-900">
+             <header class="p-4 border-b border-dark-800 flex items-center gap-4">
+                <button onclick="history.back()" class="text-gray-400 hover:text-white">← Back</button>
+                <h2 class="text-lg font-bold">Settings</h2>
+            </header>
+            <div class="p-4 space-y-6">
+                <form onsubmit="event.preventDefault(); app.saveLocalSettings()" class="space-y-6">
+                    <!-- Hidden username to prevent accessibility warning for password field -->
+                    <input type="text" name="username" autocomplete="username" class="hidden" aria-hidden="true">
+                    
+                    <div class="space-y-2">
+                        <label class="block text-sm font-medium text-gray-400">OpenAI API Key</label>
+                        <input type="password" id="api-key" placeholder="sk-..." autocomplete="new-password"
+                            class="w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
+                        <p class="text-xs text-gray-600">Stored locally in your browser by default.</p>
+                    </div>
+                    
+                    <button type="submit" class="w-full bg-primary hover:bg-emerald-600 py-3 rounded-xl font-bold text-white shadow-lg text-sm">Save Locally</button>
+                </form>
+
+                <div id="profile-sync-section" class="grid grid-cols-2 gap-4 pt-4 border-t border-dark-800 hidden">
+                    <button onclick="app.syncKeyToProfile()" class="bg-dark-800 hover:bg-dark-700 py-3 rounded-xl text-xs font-bold text-gray-400 border border-dark-700">Store in Profile</button>
+                    <button onclick="app.removeKeyFromProfile()" class="bg-dark-800 hover:bg-red-900/30 py-3 rounded-xl text-xs font-bold text-red-400 border border-dark-700">Remove from Profile</button>
+                </div>
+
+                <div class="space-y-4 pt-6 border-t border-dark-800">
+                     <button onclick="app.exportData()" class="w-full bg-dark-800 border border-dark-700 py-3 rounded-xl font-bold text-emerald-500 hover:bg-dark-700">Export All Data</button>
+                     <button id="btn-login-settings" onclick="app.navigate('login')" class="w-full bg-primary py-3 rounded-xl font-bold text-white hover:bg-emerald-600 hidden">Login / Sync Account</button>
+                     <button id="btn-logout" onclick="app.logout()" class="w-full bg-dark-800 border border-dark-700 py-3 rounded-xl font-bold text-orange-400 hover:bg-dark-700 hidden">Logout</button>
+                     <button onclick="app.deleteAllData()" class="w-full bg-red-900/20 border border-red-900/50 py-3 rounded-xl font-bold text-red-500 hover:bg-red-900/40">Delete All Data</button>
+                </div>
+
+                <div class="pt-10 border-t border-dark-800 flex flex-col items-center gap-2">
+                     <button onclick="window.location.reload()" class="w-full text-gray-400 text-sm">Reload App</button>
+                     <span id="app-version" class="text-[10px] text-gray-600 font-mono">v1.7</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAGIC INPUT VIEW -->
+        <div id="view-magic-input" class="view hidden flex-1 flex flex-col bg-dark-900">
+             <header class="p-4 border-b border-dark-800 flex items-center gap-4">
+                <button onclick="history.back()" class="text-gray-400 hover:text-white">✕</button>
+                <h2 class="text-lg font-bold">AI Review</h2>
+            </header>
+            <div class="p-6 flex-1 flex flex-col justify-start space-y-6 overflow-y-auto">
+                
+                <div id="magic-result-content" class="space-y-4"></div>
+
+                <div class="text-center">
+                    <button onclick="app.navigate('dashboard')" class="text-gray-400 text-sm hover:text-white transition-colors">Done</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ADD FOOD VIEW -->
+        <div id="view-add-food" class="view hidden flex-1 flex flex-col bg-dark-900">
+            <header class="p-4 border-b border-dark-800 flex items-center gap-4">
+                <button onclick="history.back()" class="text-gray-400 hover:text-white">Cancel</button>
+                <h2 class="text-lg font-bold" id="title-food">Add Food</h2>
+                <div class="created-at-info text-[8px] text-gray-700 ml-2 mt-1"></div>
+                <button onclick="app.deleteEntry('form-food')" class="ml-auto text-red-500 hidden btn-delete">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                    </svg>
+                </button>
+            </header>
+            <form id="form-food" class="p-4 space-y-6" autocomplete="off">
+                <input type="hidden" name="id" class="entry-id">
+                
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400">Photo</label>
+                    <label class="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-dark-700 rounded-xl cursor-pointer hover:border-primary hover:bg-dark-800 transition-colors">
+                        <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-8 h-8 text-gray-400 mb-2">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" />
+                            </svg>
+                            <p class="text-xs text-gray-400">Tap to capture</p>
+                        </div>
+                        <input type="file" name="image" accept="image/*" capture="environment" class="hidden" onchange="app.handleImageSelect(this)">
+                    </label>
+                    <div class="current-image-preview hidden flex justify-center mt-2 relative group"></div>
+                    <p id="img-preview-text" class="text-xs text-center text-emerald-500 font-medium h-4"></p>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400">Notes</label>
+                    <div class="relative">
+                        <textarea name="notes" id="food-notes" rows="3" placeholder="What did you eat?"
+                            class="w-full bg-dark-800 border border-dark-700 rounded-xl p-3 focus:outline-none focus:border-primary text-white resize-none"></textarea>
+                        <button type="button" onclick="app.startDictation('food-notes')" 
+                            class="absolute bottom-2 right-2 p-2 text-gray-400 hover:text-primary transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400">Time</label>
+                    <input type="datetime-local" name="recorded_at" class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
+                </div>
+
+                <button type="submit" class="w-full bg-primary py-4 rounded-xl font-bold text-white shadow-lg mt-4 save-btn">Save Food</button>
+            </form>
+        </div>
+
+        <!-- ADD DRINK VIEW -->
+        <div id="view-add-drink" class="view hidden flex-1 flex flex-col bg-dark-900">
+            <header class="p-4 border-b border-dark-800 flex items-center gap-4">
+                <button onclick="history.back()" class="text-gray-400 hover:text-white">Cancel</button>
+                <h2 class="text-lg font-bold" id="title-drink">Add Drink</h2>
+                <div class="created-at-info text-[8px] text-gray-700 ml-2 mt-1"></div>
+                <button onclick="app.deleteEntry('form-drink')" class="ml-auto text-red-500 hidden btn-delete">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                    </svg>
+                </button>
+            </header>
+            <form id="form-drink" class="p-4 space-y-6" autocomplete="off">
+                <input type="hidden" name="id" class="entry-id">
+                <div class="current-image-preview hidden flex justify-center mt-2 relative group"></div>
+
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400">Amount (Liters)</label>
+                    <input type="number" step="0.01" name="amount_liters" placeholder="e.g. 0.25"
+                        class="w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none text-sm">
+                </div>
+
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400">Notes (What)</label>
+                    <div class="relative">
+                        <textarea name="notes" id="drink-notes" rows="3" placeholder="e.g. Glass of water, Coffee..."
+                            class="w-full bg-dark-800 border border-dark-700 rounded-xl p-3 focus:outline-none focus:border-primary text-white resize-none"></textarea>
+                        <button type="button" id="btn-mic-drink" onclick="app.startDictation('drink-notes', 'btn-mic-drink')" 
+                            class="absolute bottom-2 right-2 p-2 text-gray-400 hover:text-primary transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400">Time</label>
+                    <input type="datetime-local" name="recorded_at" class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
+                </div>
+
+                <button type="submit" class="w-full bg-primary py-4 rounded-xl font-bold text-white shadow-lg mt-4 save-btn">Save Drink</button>
+            </form>
+        </div>
+
+        <!-- ADD FEELING VIEW -->
+        <div id="view-add-feeling" class="view hidden flex-1 flex flex-col bg-dark-900">
+            <header class="p-4 border-b border-dark-800 flex items-center gap-4">
+                <button onclick="history.back()" class="text-gray-400 hover:text-white">Cancel</button>
+                <h2 class="text-lg font-bold" id="title-feeling">Log Mood/Feeling</h2>
+                <div class="created-at-info text-[8px] text-gray-700 ml-2 mt-1"></div>
+                <button onclick="app.deleteEntry('form-feeling')" class="ml-auto text-red-500 hidden btn-delete">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                    </svg>
+                </button>
+            </header>
+            <form id="form-feeling" class="p-4 space-y-6" autocomplete="off">
+                <input type="hidden" name="id" class="entry-id">
+                <div class="current-image-preview hidden flex justify-center mt-2 relative group"></div>
+
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400">Thoughts/Notes</label>
+                    <div class="relative">
+                        <textarea name="notes" id="feeling-notes" rows="3" placeholder="How are you feeling? Any symptoms?"
+                            class="w-full bg-dark-800 border border-dark-700 rounded-xl p-3 focus:outline-none focus:border-primary text-white resize-none"></textarea>
+                        <button type="button" id="btn-mic-feeling" onclick="app.startDictation('feeling-notes', 'btn-mic-feeling')" 
+                            class="absolute bottom-2 right-2 p-2 text-gray-400 hover:text-primary transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400 flex justify-between">
+                        <span>Mood/Feeling</span>
+                        <output class="text-primary font-bold">3</output>
+                    </label>
+                    <input type="range" name="severity" min="1" max="5" value="3" 
+                        oninput="this.previousElementSibling.lastElementChild.value = this.value"
+                        class="w-full h-2 bg-dark-700 rounded-lg appearance-none cursor-pointer accent-primary">
+                    <div class="flex justify-between text-xs text-gray-400 px-1">
+                        <span>Bad/Low</span>
+                        <span>Great/High</span>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400">Time</label>
+                    <input type="datetime-local" name="recorded_at" class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
+                </div>
+
+                <button type="submit" class="w-full bg-primary py-4 rounded-xl font-bold text-white shadow-lg mt-4 save-btn">Save Entry</button>
+            </form>
+        </div>
+
+        <!-- ADD STOOL VIEW -->
+        <div id="view-add-stool" class="view hidden flex-1 flex flex-col bg-dark-900">
+             <header class="p-4 border-b border-dark-800 flex items-center gap-4">
+                <button onclick="history.back()" class="text-gray-400 hover:text-white">Cancel</button>
+                <h2 class="text-lg font-bold" id="title-stool">Stool Quality</h2>
+                <div class="created-at-info text-[8px] text-gray-700 ml-2 mt-1"></div>
+                <button onclick="app.deleteEntry('form-stool')" class="ml-auto text-red-500 hidden btn-delete">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                    </svg>
+                </button>
+            </header>
+            <form id="form-stool" class="p-4 space-y-6" autocomplete="off">
+                <input type="hidden" name="id" class="entry-id">
+                <div class="current-image-preview hidden flex justify-center mt-2 relative group"></div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-400 mb-3 text-center">Bristol Scale</label>
+                    <div class="flex flex-col gap-2 bristol-selector">
+                        <button type="button" data-val="1" class="flex items-center gap-3 p-3 rounded-lg bg-dark-800 border border-dark-700 hover:bg-dark-700 text-left">
+                            <div class="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs font-bold">1</div>
+                            <span class="text-sm">Hard lumps, like nuts</span>
+                        </button>
+                        <button type="button" data-val="2" class="flex items-center gap-3 p-3 rounded-lg bg-dark-800 border border-dark-700 hover:bg-dark-700 text-left">
+                            <div class="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs font-bold">2</div>
+                            <span class="text-sm">Sausage-shaped, lumpy</span>
+                        </button> 
+                        <button type="button" data-val="3" class="flex items-center gap-3 p-3 rounded-lg bg-dark-800 border border-dark-700 hover:bg-dark-700 text-left">
+                            <div class="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs font-bold">3</div>
+                            <span class="text-sm">Sausage, cracks on surface</span>
+                        </button>
+                        <button type="button" data-val="4" class="flex items-center gap-3 p-3 rounded-lg bg-dark-800 border border-dark-700 hover:bg-dark-700 text-left">
+                            <div class="w-6 h-6 rounded-full bg-emerald-600 flex items-center justify-center text-xs font-bold">4</div>
+                            <span class="text-sm">Sausage, smooth & soft</span>
+                        </button>
+                        <button type="button" data-val="5" class="flex items-center gap-3 p-3 rounded-lg bg-dark-800 border border-dark-700 hover:bg-dark-700 text-left">
+                            <div class="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs font-bold">5</div>
+                            <span class="text-sm">Soft blobs, clear edges</span>
+                        </button>
+                        <button type="button" data-val="6" class="flex items-center gap-3 p-3 rounded-lg bg-dark-800 border border-dark-700 hover:bg-dark-700 text-left">
+                            <div class="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs font-bold">6</div>
+                            <span class="text-sm">Fluffy pieces, ragged edges</span>
+                        </button>
+                        <button type="button" data-val="7" class="flex items-center gap-3 p-3 rounded-lg bg-dark-800 border border-dark-700 hover:bg-dark-700 text-left">
+                            <div class="w-6 h-6 rounded-full bg-gray-600 flex items-center justify-center text-xs font-bold">7</div>
+                            <span class="text-sm">Watery, no solid pieces</span>
+                        </button>
+                    </div>
+                    <input type="hidden" name="bristol_score" id="bristol_score" required>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400">Notes</label>
+                    <textarea name="notes" rows="2" class="w-full bg-dark-800 border border-dark-700 rounded-xl p-3 focus:outline-none focus:border-primary text-white resize-none"></textarea>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400">Time</label>
+                    <input type="datetime-local" name="recorded_at" class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
+                </div>
+
+                <button type="submit" class="w-full bg-primary py-4 rounded-xl font-bold text-white shadow-lg mt-4 save-btn">Save Log</button>
+            </form>
+        </div>
+
+        <!-- ADD SLEEP VIEW -->
+        <div id="view-add-sleep" class="view hidden flex-1 flex flex-col bg-dark-900">
+             <header class="p-4 border-b border-dark-800 flex items-center gap-4">
+                <button onclick="history.back()" class="text-gray-400 hover:text-white">Cancel</button>
+                <h2 class="text-lg font-bold" id="title-sleep">Sleep Log</h2>
+                <div class="created-at-info text-[8px] text-gray-700 ml-2 mt-1"></div>
+                <button onclick="app.deleteEntry('form-sleep')" class="ml-auto text-red-500 hidden btn-delete">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                    </svg>
+                </button>
+            </header>
+            <form id="form-sleep" class="p-4 space-y-6" autocomplete="off">
+                <input type="hidden" name="id" class="entry-id">
+                <div class="current-image-preview hidden flex justify-center mt-2 relative group"></div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-2">
+                        <label class="block text-sm font-medium text-gray-400">Bedtime</label>
+                        <input type="datetime-local" name="bedtime" required 
+                            class="w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none text-sm">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-sm font-medium text-gray-400">Wake Up</label>
+                        <input type="datetime-local" name="recorded_at" required 
+                            class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none text-sm">
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400 flex justify-between">
+                        <span>Quality</span>
+                        <output class="text-primary font-bold">3</output>
+                    </label>
+                    <input type="range" name="quality" min="1" max="5" value="3" 
+                        oninput="this.previousElementSibling.lastElementChild.value = this.value"
+                        class="w-full h-2 bg-dark-700 rounded-lg appearance-none cursor-pointer accent-primary">
+                    <div class="flex justify-between text-xs text-gray-400 px-1">
+                        <span>Awful</span>
+                        <span>Great</span>
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full bg-primary py-4 rounded-xl font-bold text-white shadow-lg mt-4 save-btn">Save Sleep</button>
+            </form>
+        </div>
+
+        <!-- ADD ACTIVITY VIEW -->
+        <div id="view-add-activity" class="view hidden flex-1 flex flex-col bg-dark-900">
+             <header class="p-4 border-b border-dark-800 flex items-center gap-4">
+                <button onclick="history.back()" class="text-gray-400 hover:text-white">Cancel</button>
+                <h2 class="text-lg font-bold" id="title-activity">Activity</h2>
+                <div class="created-at-info text-[8px] text-gray-700 ml-2 mt-1"></div>
+                <button onclick="app.deleteEntry('form-activity')" class="ml-auto text-red-500 hidden btn-delete">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                    </svg>
+                </button>
+            </header>
+            <form id="form-activity" class="p-4 space-y-6" autocomplete="off">
+                <input type="hidden" name="id" class="entry-id">
+                <div class="current-image-preview hidden flex justify-center mt-2 relative group"></div>
+
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400">Duration (Minutes)</label>
+                    <input type="number" name="duration_minutes" placeholder="e.g. 30" required
+                        class="w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none text-sm">
+                </div>
+
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400 mb-3 text-center">Intensity</label>
+                    <div class="flex gap-2 intensity-selector">
+                        <button type="button" data-val="Low" class="flex-1 p-3 rounded-xl bg-dark-800 border border-dark-700 hover:bg-dark-700 flex flex-col items-center gap-1 transition-all">
+                            <span class="text-xl">🧘</span>
+                            <span class="text-xs font-bold text-gray-400">Low</span>
+                            <span class="text-[8px] text-gray-600">Yoga/Walk</span>
+                        </button>
+                        <button type="button" data-val="Medium" class="flex-1 p-3 rounded-xl bg-dark-800 border border-dark-700 hover:bg-dark-700 flex flex-col items-center gap-1 transition-all">
+                            <span class="text-xl">🏃</span>
+                            <span class="text-xs font-bold text-gray-400">Medium</span>
+                            <span class="text-[8px] text-gray-600">Jog/Gym</span>
+                        </button>
+                        <button type="button" data-val="High" class="flex-1 p-3 rounded-xl bg-dark-800 border border-dark-700 hover:bg-dark-700 flex flex-col items-center gap-1 transition-all">
+                            <span class="text-xl">🔥</span>
+                            <span class="text-xs font-bold text-gray-400">High</span>
+                            <span class="text-[8px] text-gray-600">HIIT/Sprint</span>
+                        </button>
+                    </div>
+                    <input type="hidden" name="intensity" id="intensity_val" required>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400">Notes (Activity Name)</label>
+                     <div class="relative">
+                        <textarea name="notes" id="activity-notes" rows="2" placeholder="e.g. Morning Yoga"
+                            class="w-full bg-dark-800 border border-dark-700 rounded-xl p-3 focus:outline-none focus:border-primary text-white resize-none"></textarea>
+                        <button type="button" id="btn-mic-activity" onclick="app.startDictation('activity-notes', 'btn-mic-activity')" 
+                            class="absolute bottom-2 right-2 p-2 text-gray-400 hover:text-primary transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="space-y-2">
+                    <label class="block text-sm font-medium text-gray-400">Time</label>
+                    <input type="datetime-local" name="recorded_at" class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
+                </div>
+
+                <button type="submit" class="w-full bg-primary py-4 rounded-xl font-bold text-white shadow-lg mt-4 save-btn">Save Activity</button>
+            </form>
+        </div>
+
+    </main>
+
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>

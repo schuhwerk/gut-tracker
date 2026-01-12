@@ -1,0 +1,30 @@
+{
+  "id": "/gut-tracker/",
+  "version": "1.7",
+  "name": "Gut Health Tracker",
+  "short_name": "GutTracker",
+  "start_url": "index.php",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#10b981",
+  "icons": [
+    {
+      "src": "icons/icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
