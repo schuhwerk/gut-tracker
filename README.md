@@ -2,6 +2,7 @@
 
 A modern, self-hosted PWA for tracking gut health, diet, and lifestyle with AI-assisted entry.
 **No build step.** Only **Tailwind CSS** and **Chart.js** (via CDN) as dependencies.
+*Works 100% without AI, too!*
 
 ## Features
 
