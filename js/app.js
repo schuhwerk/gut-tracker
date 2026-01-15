@@ -1056,6 +1056,61 @@ const app = {
         downloadAnchorNode.remove();
     },
 
+    exportDataForAI: async () => {
+        // Fetch all entries (limit 5000 should cover most users for now)
+        const entries = await DataService.getEntries(5000);
+        
+        // Sort Chronologically (Oldest First) for causality analysis
+        entries.sort((a, b) => new Date(a.recorded_at) - new Date(b.recorded_at));
+
+        let output = "GUT TRACKER EXPORT (AI OPTIMIZED)\n";
+        output += "Format: [Timestamp] TYPE - Details\n";
+        output += "=====================================\n\n";
+
+        entries.forEach(e => {
+            const date = new Date(e.recorded_at);
+            // Format: YYYY-MM-DD HH:MM
+            const timeStr = date.toISOString().replace('T', ' ').substring(0, 16);
+            const type = e.type.toUpperCase();
+            
+            output += `[${timeStr}] ${type}\n`;
+            
+            if (e.data.notes) {
+                output += `  Notes: ${e.data.notes}\n`;
+            }
+
+            if (e.type === 'food') {
+                // Notes already handled
+            } else if (e.type === 'drink') {
+                if (e.data.amount_liters) output += `  Amount: ${e.data.amount_liters}L\n`;
+            } else if (e.type === 'stool') {
+                if (e.data.bristol_score) output += `  Bristol Scale: ${e.data.bristol_score}\n`;
+            } else if (e.type === 'sleep') {
+                if (e.data.quality) output += `  Quality: ${e.data.quality}/5\n`;
+                if (e.data.duration_hours) output += `  Duration: ${e.data.duration_hours}h\n`;
+                if (e.data.bedtime) {
+                    const bed = new Date(e.data.bedtime).toISOString().replace('T', ' ').substring(0, 16);
+                    output += `  Bedtime: ${bed}\n`;
+                }
+            } else if (e.type === 'feeling' || e.type === 'symptom') {
+                if (e.data.severity) output += `  Severity: ${e.data.severity}/5\n`;
+            } else if (e.type === 'activity') {
+                 if (e.data.duration_minutes) output += `  Duration: ${e.data.duration_minutes} min\n`;
+                 if (e.data.intensity) output += `  Intensity: ${e.data.intensity}\n`;
+            }
+            
+            output += "\n";
+        });
+
+        const dataStr = "data:text/plain;charset=utf-8," + encodeURIComponent(output);
+        const downloadAnchorNode = document.createElement('a');
+        downloadAnchorNode.setAttribute("href",     dataStr);
+        downloadAnchorNode.setAttribute("download", "gut_tracker_ai_export.txt");
+        document.body.appendChild(downloadAnchorNode);
+        downloadAnchorNode.click();
+        downloadAnchorNode.remove();
+    },
+
     deleteAllData: async () => {
         if (!confirm('EXTREMELY IMPORTANT: This will delete ALL data from this device and the server (if logged in). Proceed?')) return;
         if (!confirm('Are you REALLY sure?')) return;

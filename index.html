@@ -367,7 +367,10 @@
                 </div>
 
                 <div class="space-y-4 pt-6 border-t border-dark-800">
-                     <button onclick="app.exportData()" class="w-full bg-dark-800 border border-dark-700 py-3 rounded-xl font-bold text-emerald-500 hover:bg-dark-700">Export All Data</button>
+                     <div class="flex gap-3">
+                        <button onclick="app.exportData()" class="flex-1 bg-dark-800 border border-dark-700 py-3 rounded-xl font-bold text-emerald-500 hover:bg-dark-700 text-sm">Export JSON</button>
+                        <button onclick="app.exportDataForAI()" class="flex-1 bg-dark-800 border border-dark-700 py-3 rounded-xl font-bold text-emerald-500 hover:bg-dark-700 text-sm">Export for AI</button>
+                     </div>
                      <button id="btn-login-settings" onclick="app.navigate('login')" class="w-full bg-primary py-3 rounded-xl font-bold text-white hover:bg-emerald-600 hidden">Login / Sync Account</button>
                      <button id="btn-logout" onclick="app.logout()" class="w-full bg-dark-800 border border-dark-700 py-3 rounded-xl font-bold text-orange-400 hover:bg-dark-700 hidden">Logout</button>
                      <button onclick="app.deleteAllData()" class="w-full bg-red-900/20 border border-red-900/50 py-3 rounded-xl font-bold text-red-500 hover:bg-red-900/40">Delete All Data</button>
