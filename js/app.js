@@ -289,6 +289,7 @@ const app = {
                 ...originalEntry,
                 id: null,
                 recorded_at: utils.toUTC(new Date()),
+                created_at: utils.toUTC(new Date()),
                 synced: 0 // Ensure it's treated as new
             };
             

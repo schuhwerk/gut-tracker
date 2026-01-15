@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gut-tracker-v13';
+const CACHE_NAME = 'gut-tracker-v14';
 const ASSETS_TO_CACHE = [
     './',
     'index.html',
