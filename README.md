@@ -58,6 +58,17 @@ Ensure your web server (Apache/Nginx) blocks access to these sensitive files:
 
 *An `.htaccess` file is included for Apache environments.*
 
+## Testing
+
+Run the full test suite:
+```bash
+bash tests/run_tests.sh
+```
+
+To run a single test:
+1. Start the server: `php -S 127.0.0.1:8085 router.php`
+2. Execute the test: `php tests/test_api.php`
+
 ## Credits
 
 *   **Tailwind CSS** for the modern UI.

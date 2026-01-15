@@ -258,6 +258,12 @@ function parseAiJsonContent($content) {
     return $parsed;
 }
 
+// Global error handler to catch notices/warnings
+set_error_handler(function($errno, $errstr, $errfile, $errline) {
+    if (!(error_reporting() & $errno)) return false;
+    throw new ErrorException($errstr, 0, $errno, $errfile, $errline);
+});
+
 // Global Exception Handler for API Logic
 try {
 
@@ -406,7 +412,7 @@ if ($method === 'POST' && $endpoint === 'entry') {
     }
     
     $type = $_POST['type'] ?? $input['type'] ?? null;
-    $recordedAt = $_POST['recorded_at'] ?? $input['recorded_at'] ?? date('Y-m-d H:i:s');
+    $recordedAt = $_POST['recorded_at'] ?? $input['recorded_at'] ?? gmdate('Y-m-d H:i:s');
     $recordedAt = str_replace('T', ' ', $recordedAt);
     if (strlen($recordedAt) === 16) $recordedAt .= ':00';
     $entryId = $_POST['id'] ?? $input['id'] ?? null;
@@ -523,7 +529,7 @@ if ($method === 'POST' && $endpoint === 'ai_parse') {
     if (!$text) jsonResponse(['error' => 'Missing text'], 400);
     if (!$apiKey) jsonResponse(['error' => 'NO_API_KEY', 'message' => 'Missing API key'], 400);
 
-    $currentDate = $input['client_time'] ?? date('Y-m-d H:i:s');
+    $currentDate = $input['client_time'] ?? gmdate('Y-m-d H:i:s');
     $offset = $input['client_timezone_offset'] ?? 0;
     
     try {
@@ -571,7 +577,7 @@ if ($method === 'POST' && $endpoint === 'ai_vision') {
     if (!$imageBase64) jsonResponse(['error' => 'Missing image'], 400);
     if (!$apiKey) jsonResponse(['error' => 'NO_API_KEY', 'message' => 'Missing API key'], 400);
 
-    $currentDate = $input['client_time'] ?? date('Y-m-d H:i:s');
+    $currentDate = $input['client_time'] ?? gmdate('Y-m-d H:i:s');
     $offset = $input['client_timezone_offset'] ?? 0;
 
     try {
@@ -635,7 +641,7 @@ if ($method === 'POST' && $endpoint === 'ai_magic_voice') {
         if (!$text) jsonResponse(['error' => 'No speech detected'], 400);
 
         // 2. Parse Text
-        $currentDate = $_POST['client_time'] ?? date('Y-m-d H:i:s');
+        $currentDate = $_POST['client_time'] ?? gmdate('Y-m-d H:i:s');
         $offset = $_POST['client_timezone_offset'] ?? 0;
         
         $data = callOpenAI('chat/completions', [
@@ -670,8 +676,9 @@ if ($method === 'GET' && $endpoint === 'check_auth') {
 // Fallback
 jsonResponse(['error' => 'Endpoint not found', 'endpoint' => $endpoint], 404);
 
-} catch (Exception $e) {
-    error_log("API Error: " . $e->getMessage());
-    jsonResponse(['error' => 'Server Error: ' . $e->getMessage()], 500);
+} catch (Throwable $e) {
+    $errorMsg = $e->getMessage() . " in " . basename($e->getFile()) . ":" . $e->getLine();
+    error_log("API Error: " . $errorMsg);
+    jsonResponse(['error' => 'Server Error: ' . $errorMsg], 500);
 }
 ?>

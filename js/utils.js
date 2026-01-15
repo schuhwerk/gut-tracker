@@ -8,6 +8,11 @@ export const utils = {
         return date.toLocaleString('sv').replace(' ', 'T').substring(0, 16);
     },
 
+    // Get current UTC time in YYYY-MM-DD HH:MM:SS format
+    nowUTC: () => {
+        return new Date().toISOString().replace('T', ' ').substring(0, 19);
+    },
+
     // Convert Local Date/String -> UTC String (YYYY-MM-DD HH:MM:SS)
     toUTC: (dateOrString) => {
         const d = new Date(dateOrString);

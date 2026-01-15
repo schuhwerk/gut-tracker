@@ -40,6 +40,7 @@ $testDescriptions = [
     'test_ai_live.php' => 'Live integration test with Gemini AI',
     'test_api.php' => 'Core API functionality (CRUD for entries)',
     'test_create_user_repro.php' => 'Reproduction for user creation edge cases',
+    'test_dates.php' => 'Validation of date and time formatting',
     'test_delete.php' => 'Basic entry deletion',
     'test_delete_robust.php' => 'Advanced deletion scenarios and constraints',
     'test_entries_bug.php' => 'Regression test for specific entry fetch bug',

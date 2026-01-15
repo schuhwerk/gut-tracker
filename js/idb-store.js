@@ -1,5 +1,5 @@
 const DB_NAME = 'GutTrackerDB';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export const db = {
     open: () => {
@@ -7,13 +7,15 @@ export const db = {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
 
             request.onupgradeneeded = (event) => {
-                const db = event.target.result;
+                const dbInstance = event.target.result;
+                const oldVersion = event.oldVersion;
                 let store;
-                if (!db.objectStoreNames.contains('entries')) {
-                    store = db.createObjectStore('entries', { keyPath: 'id', autoIncrement: true });
+
+                if (!dbInstance.objectStoreNames.contains('entries')) {
+                    store = dbInstance.createObjectStore('entries', { keyPath: 'id', autoIncrement: true });
                     store.createIndex('type', 'type', { unique: false });
                     store.createIndex('recorded_at', 'recorded_at', { unique: false });
-                    store.createIndex('synced', 'synced', { unique: false }); // 0 = no, 1 = yes
+                    store.createIndex('synced', 'synced', { unique: false });
                     store.createIndex('user_id', 'user_id', { unique: false });
                 } else {
                     store = request.transaction.objectStore('entries');
@@ -21,9 +23,39 @@ export const db = {
                         store.createIndex('user_id', 'user_id', { unique: false });
                     }
                 }
+
+                // Migration for version 3: Standardize date formats
+                if (oldVersion < 3) {
+                    const transaction = request.transaction;
+                    const entriesStore = transaction.objectStore('entries');
+                    entriesStore.openCursor().onsuccess = (e) => {
+                        const cursor = e.target.result;
+                        if (cursor) {
+                            const entry = cursor.value;
+                            let changed = false;
+
+                            // Fix created_at
+                            if (entry.created_at && entry.created_at.includes('T') && entry.created_at.includes('Z')) {
+                                entry.created_at = entry.created_at.replace('T', ' ').substring(0, 19);
+                                changed = true;
+                            }
+                            // Fix recorded_at
+                            if (entry.recorded_at && entry.recorded_at.includes('T')) {
+                                entry.recorded_at = entry.recorded_at.replace('T', ' ');
+                                if (entry.recorded_at.length === 16) entry.recorded_at += ':00';
+                                changed = true;
+                            }
+
+                            if (changed) {
+                                cursor.update(entry);
+                            }
+                            cursor.continue();
+                        }
+                    };
+                }
                 
-                if (!db.objectStoreNames.contains('settings')) {
-                    db.createObjectStore('settings', { keyPath: 'key' });
+                if (!dbInstance.objectStoreNames.contains('settings')) {
+                    dbInstance.createObjectStore('settings', { keyPath: 'key' });
                 }
             };
 
@@ -56,7 +88,7 @@ export const db = {
             entry.synced = 0;
             // Only set created_at for new entries
             if (!entry.created_at && !entry.id) {
-                entry.created_at = new Date().toISOString();
+                entry.created_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
             }
             return store.put(entry); // Use put for upsert support
         });

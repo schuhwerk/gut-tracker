@@ -6,3 +6,4 @@ tests/cookie.txt
 gut_tracker.sqlite
 gut_tracker.wal
 *.code-workspace
+*.log
