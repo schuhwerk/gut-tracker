@@ -141,14 +141,8 @@
                         <img src="icons/icon.png" alt="Gut Logo" class="w-8 h-8">
                         <h2 class="text-xl font-bold text-white">Timeline</h2>
                     </div>
-                    <div class="flex gap-2">
-                        <button id="btn-status-icon" onclick="app.showStatusBox()" class="hidden text-orange-400 hover:text-orange-300 transition-colors" title="Status Alert">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                            </svg>
-                        </button>
-                        <button onclick="app.navigate('diagram')" class="text-gray-400 hover:text-white" title="Charts">
-                        <button id="btn-status-icon" onclick="app.showStatusBox()" class="hidden text-orange-400 hover:text-orange-300 transition-colors" title="Status Alert">
+                    <div class="flex gap-4 items-center">
+                        <button id="btn-status-icon" onclick="app.showAllAlerts()" class="hidden text-orange-800 hover:text-orange-500 transition-all duration-[3000ms]" title="Status Alert">
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
                               <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
                             </svg>
@@ -185,23 +179,24 @@
             </header>
 
             <!-- BETA WARNING DASHBOARD -->
-            <div id="beta-warning-dash" class="mx-4 mt-4 p-3 bg-orange-900/20 border border-orange-500/30 rounded-xl flex items-start gap-3 relative">
-                <button onclick="document.getElementById('beta-warning-dash').remove()" class="absolute top-2 right-2 text-orange-500/50 hover:text-orange-500">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+            <div id="beta-warning-dash" class="hidden mx-4 mt-4 p-4 bg-orange-900/20 border border-orange-500/30 rounded-2xl relative">
+                <button onclick="app.dismissBetaWarning()" class="absolute top-2 right-2 text-orange-500/50 hover:text-orange-500 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
-                <div class="text-orange-500 mt-1">
+                <h3 class="text-orange-400 font-bold mb-1 flex items-center gap-2">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
                     </svg>
-                </div>
-                <div class="pr-6">
-                    <h4 class="text-orange-400 font-bold text-xs uppercase tracking-wide mb-1">Beta Software</h4>
-                    <p class="text-[10px] text-orange-200/70 leading-relaxed">
-                        Structure may change without notice. No backward compatibility guaranteed. <strong>Data loss is possible.</strong>
-                    </p>
-                </div>
+                    Beta Software
+                </h3>
+                <p class="text-xs text-gray-300 leading-relaxed mb-3">
+                    Structure may change without notice. No backward compatibility guaranteed. <strong>Data loss is possible.</strong>
+                </p>
+                <button onclick="app.dismissBetaWarning()" class="w-full bg-orange-900/40 hover:bg-orange-900/60 text-orange-200 border border-orange-500/30 font-bold py-2 rounded-lg text-xs transition-colors">
+                    I Understand
+                </button>
             </div>
 
             <!-- Login Warning Box -->

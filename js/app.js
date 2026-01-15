@@ -181,6 +181,9 @@ const app = {
 
             // Status Box Logic (Offline or Unauth)
             app.updateStatusBox();
+            
+            // Beta Warning Logic
+            app.checkBetaWarning();
         } else if (viewId === 'stats') {
             app.loadStats();
         } else if (viewId === 'diagram') {
@@ -265,7 +268,49 @@ const app = {
                 const entry = entries.find(e => e.id == id);
                 if (entry) app.editEntry(entry);
             };
+
+            const cloneBtn = el.querySelector('.btn-clone');
+            if (cloneBtn) {
+                cloneBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    const id = el.dataset.id;
+                    const entry = entries.find(e => e.id == id);
+                    if (entry) app.cloneEntry(entry);
+                };
+            }
         });
+    },
+
+    cloneEntry: async (originalEntry) => {
+        
+        try {
+            // Create clone with current time
+            const newEntry = {
+                ...originalEntry,
+                id: null,
+                recorded_at: utils.toUTC(new Date()),
+                synced: 0 // Ensure it's treated as new
+            };
+            
+            // If original was a draft, make sure new one isn't (or is?)
+            // Usually we want to verify real entries.
+            if (newEntry.data && newEntry.data.is_draft) {
+                delete newEntry.data.is_draft;
+            }
+
+            const result = await DataService.saveEntry(newEntry);
+            
+            app.lastSavedId = result.id;
+            app.loadEntries(); // Refresh
+            
+            app.showUndoToast('Entry re-added', async () => {
+                await DataService.deleteEntry(result.id);
+                app.loadEntries();
+            });
+
+        } catch (e) {
+            alert('Failed to re-add: ' + e.message);
+        }
     },
 
     prepareAddView: (viewId) => {
@@ -871,7 +916,7 @@ const app = {
              committed = true;
              app.pendingDeletions.delete(id);
              await DataService.deleteEntry(id);
-        }, 4000);
+        }, 5000);
 
         app.showUndoToast('Draft discarded', () => {
              if(committed) return;
@@ -889,22 +934,43 @@ const app = {
         }
     },
 
+    checkBetaWarning: () => {
+        const box = document.getElementById('beta-warning-dash');
+        if (!box) return;
+        if (localStorage.getItem('betaWarningDismissed') === 'true') {
+            box.classList.add('hidden');
+        } else {
+            box.classList.remove('hidden');
+        }
+        app.updateAlertIcon();
+    },
+
+    dismissBetaWarning: () => {
+        const box = document.getElementById('beta-warning-dash');
+        if (box) box.classList.add('hidden');
+        localStorage.setItem('betaWarningDismissed', 'true');
+        app.updateAlertIcon();
+    },
+
+    getStatusType: () => {
+        if (DataService.mode === 'LOCAL') return 'OFFLINE';
+        if (DataService.mode === 'HYBRID' && !DataService.isAuthenticated) return 'UNAUTH';
+        return null;
+    },
+
     updateStatusBox: () => {
         const box = document.getElementById('status-box');
-        const icon = document.getElementById('btn-status-icon');
         const titleEl = document.getElementById('status-box-title');
         const msgEl = document.getElementById('status-box-msg');
         const actionBtn = document.getElementById('status-box-action');
         
         if (!box) return;
 
-        let type = null;
-        if (DataService.mode === 'LOCAL') type = 'OFFLINE';
-        else if (DataService.mode === 'HYBRID' && !DataService.isAuthenticated) type = 'UNAUTH';
+        const type = app.getStatusType();
 
         if (!type) {
             box.classList.add('hidden');
-            if (icon) icon.classList.add('hidden');
+            app.updateAlertIcon();
             return;
         }
 
@@ -924,41 +990,72 @@ const app = {
         const dismissedKey = `statusDismissed_${type}`;
         if (localStorage.getItem(dismissedKey) === 'true') {
             box.classList.add('hidden');
-            if (icon) {
-                 icon.classList.remove('hidden');
-                 // Blink once on load if needed, but usually strictly on dismiss action.
-                 // "next load it does not show, only the icon shows" (no blink mentioned for reload)
-            }
         } else {
             box.classList.remove('hidden');
-            if (icon) icon.classList.add('hidden');
         }
+        app.updateAlertIcon();
     },
 
     dismissStatusBox: () => {
-        let type = null;
-        if (DataService.mode === 'LOCAL') type = 'OFFLINE';
-        else if (DataService.mode === 'HYBRID' && !DataService.isAuthenticated) type = 'UNAUTH';
-        
+        const type = app.getStatusType();
         if (type) {
             localStorage.setItem(`statusDismissed_${type}`, 'true');
             const box = document.getElementById('status-box');
-            const icon = document.getElementById('btn-status-icon');
             if(box) box.classList.add('hidden');
+            app.updateAlertIcon();
+            
+            // Blink icon
+            const icon = document.getElementById('btn-status-icon');
             if(icon) {
-                icon.classList.remove('hidden');
-                // Blink Once logic
                 icon.classList.add('animate-pulse');
                 setTimeout(() => icon.classList.remove('animate-pulse'), 2000);
             }
         }
     },
 
-    showStatusBox: () => {
-        const box = document.getElementById('status-box');
+    updateAlertIcon: () => {
         const icon = document.getElementById('btn-status-icon');
-        if(box) box.classList.remove('hidden');
-        if(icon) icon.classList.add('hidden');
+        if (!icon) return;
+
+        const betaDismissed = localStorage.getItem('betaWarningDismissed') === 'true';
+        
+        const type = app.getStatusType();
+        const statusDismissed = type ? localStorage.getItem(`statusDismissed_${type}`) === 'true' : false;
+
+        // Show icon if ANY relevant alert is dismissed
+        if (betaDismissed || (type && statusDismissed)) {
+            icon.classList.remove('hidden');
+            
+            // Trigger animation if not already settled
+            if (!icon.dataset.settled) {
+                icon.classList.add('text-orange-400', 'animate-pulse');
+                icon.dataset.settled = "true";
+                
+                setTimeout(() => {
+                    icon.classList.remove('text-orange-400', 'animate-pulse');
+                }, 3000); // Fade out after 3s
+            }
+        } else {
+            icon.classList.add('hidden');
+            delete icon.dataset.settled;
+            icon.classList.remove('text-orange-400', 'animate-pulse');
+        }
+    },
+
+    showAllAlerts: () => {
+        // Clear dismiss flags
+        localStorage.removeItem('betaWarningDismissed');
+        const type = app.getStatusType();
+        if(type) localStorage.removeItem(`statusDismissed_${type}`);
+        
+        // Update UI
+        app.checkBetaWarning();
+        app.updateStatusBox();
+    },
+
+    showStatusBox: () => {
+        // Legacy/Fallback - redirects to showAll now
+        app.showAllAlerts();
     },
 
     deleteEntry: async (formId) => {
@@ -977,7 +1074,7 @@ const app = {
              committed = true;
              app.pendingDeletions.delete(id);
              await DataService.deleteEntry(id);
-         }, 4000);
+         }, 5000);
 
          app.showUndoToast('Entry deleted', () => {
              if (committed) return; // Too late
@@ -1013,7 +1110,7 @@ const app = {
                 toast.style.opacity = '0';
                 setTimeout(() => toast.remove(), 500);
             }
-        }, 4000);
+        }, 5000);
     },
 
     syncKeyToProfile: async () => {
