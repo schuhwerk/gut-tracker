@@ -494,7 +494,15 @@ const app = {
         if (entry.data.image_path) {
             const prev = form.querySelector('.current-image-preview') || document.querySelector(`#view-${viewId} .current-image-preview`);
             if (prev) {
-                prev.innerHTML = `<img src="${entry.data.image_path}" class="h-32 rounded-lg border border-dark-600 bg-dark-800 object-cover">`;
+                prev.innerHTML = `
+                <div class="relative inline-block">
+                    <img src="${entry.data.image_path}" class="h-32 rounded-lg border border-dark-600 bg-dark-800 object-cover" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNmI3MjgwIiBzdHJva2Utd2lkdGg9IjIiPjxwYXRoIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgZD0iTTEyIDl2Mn0xMiAxNXYuMDFNMjEgMTJjMCA0Ljk3LTQuMDMgOS05IDlTMiAxNi45NyAyIDEyIDEyIDIuOTggMTIgMi45OCA5IDIxIDEyek0xMiA4VjQiIC8+PC9zdmc+'">
+                    <button type="button" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors z-10" onclick="app.removeImage(this)">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>`;
                 prev.classList.remove('hidden');
             }
         }
@@ -504,6 +512,7 @@ const app = {
         const form = document.getElementById(formId);
         if(!form) return;
         form.reset();
+        delete form.dataset.removeImage;
         form.querySelector('input[name="id"]').value = '';
         const prev = form.querySelector('.current-image-preview');
         if(prev) { prev.innerHTML = ''; prev.classList.add('hidden'); }
@@ -566,6 +575,12 @@ const app = {
                 entry.data.notes = formData.get('notes');
                 entry.data.duration_minutes = formData.get('duration_minutes');
                 entry.data.intensity = formData.get('intensity');
+            }
+
+            // Handle Image Removal
+            if (form.dataset.removeImage === '1') {
+                entry.data.image_path = null;
+                entry.image_blob = null;
             }
 
             try {
@@ -681,6 +696,18 @@ const app = {
     },
 
     // Magic Features
+    removeImage: (btn) => {
+        const form = btn.closest('form');
+        const prev = btn.closest('.current-image-preview');
+        if (prev) {
+            prev.innerHTML = '';
+            prev.classList.add('hidden');
+        }
+        const fileInput = form.querySelector('input[name="image"]');
+        if (fileInput) fileInput.value = '';
+        form.dataset.removeImage = '1';
+    },
+
     handleImageSelect: async (input) => {
         if (!DataService.apiKey) {
             alert('Please add your OpenAI API Key in settings to use AI features.');

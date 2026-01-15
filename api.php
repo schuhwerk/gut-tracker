@@ -426,16 +426,35 @@ if ($method === 'POST' && $endpoint === 'entry') {
     
     if ($uploadedImage) {
         $jsonData['image_path'] = $uploadedImage;
-    } elseif ($entryId) {
-        // Keep existing image if updating and no new image uploaded
-        // We need to fetch the existing data to preserve the image path
+    }
+
+    if ($entryId) {
+        // Fetch existing data to handle image cleanup/preservation
         $stmt = $pdo->prepare("SELECT data FROM entries WHERE id = ? AND user_id = ?");
         $stmt->execute([$entryId, $userId]);
         $existing = $stmt->fetch();
+        
         if ($existing && !empty($existing['data'])) {
             $existingData = json_decode($existing['data'], true);
-            if (is_array($existingData) && isset($existingData['image_path'])) {
-                $jsonData['image_path'] = $existingData['image_path'];
+            
+            if (is_array($existingData) && !empty($existingData['image_path'])) {
+                $oldPath = $existingData['image_path'];
+                
+                // If client explicitly sent image_path (null or new) OR we uploaded a new one above
+                if (array_key_exists('image_path', $jsonData)) {
+                    $newPath = $jsonData['image_path'] ?? null;
+                    
+                    // Cleanup old file if it's being replaced or removed
+                    if ($oldPath !== $newPath) {
+                        if (strpos($oldPath, 'uploads/') === 0 && strpos($oldPath, '..') === false) {
+                            $f = __DIR__ . '/' . $oldPath;
+                            if (file_exists($f)) @unlink($f);
+                        }
+                    }
+                } else {
+                    // Client sent no instruction regarding image, preserve existing
+                    $jsonData['image_path'] = $oldPath;
+                }
             }
         }
     }
