@@ -408,7 +408,7 @@ const app = {
         
         form.querySelector('input[name="id"]').value = entry.id || '';
         const infoEl = document.querySelector(`#view-${viewId} .created-at-info`);
-        if (infoEl) infoEl.innerText = entry.id ? 'Recorded: ' + entry.recorded_at : '';
+        if (infoEl) infoEl.innerText = entry.id ? 'Created: ' + (entry.created_at || 'N/A') + ' (UTC)' : '';
         
         const deleteBtn = document.querySelector(`#view-${viewId} .btn-delete`);
         if (deleteBtn) {
