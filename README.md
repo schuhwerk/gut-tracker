@@ -1,149 +1,75 @@
-# Gut Health Tracker PWA 🧬
+# <img src="icons/icon.png" width="48" height="48" valign="bottom" /> Gut Health Tracker
 
-A modern, self-hosted Progressive Web App (PWA) designed to help you track your gut health, diet, and lifestyle with the power of AI.
+A modern, self-hosted PWA for tracking gut health, diet, and lifestyle with AI-assisted entry.
+**No build step.** Only **Tailwind CSS** and **Chart.js** (via CDN) as dependencies.
 
-## ✨ Features
+## Features
 
-### 📝 Comprehensive Tracking
-*   **Food & Drink:** Log meals and hydration.
-*   **Stool Quality:** Track bowel movements using the **Bristol Stool Scale** (Types 1-7).
-*   **Sleep:** Monitor sleep duration and quality.
-*   **Symptoms/Feelings:** Record pain, bloating, mood, or other symptoms with severity ratings.
+*   **Tracking:** Food, hydration, sleep, and stool quality (Bristol Scale).
+*   **AI-Assisted Entry:** Natural language input, voice entry, and food photo analysis.
+*   **Visualization:** Interactive charts for correlations (e.g., Sleep vs. Digestion).
+*   **PWA:** Installable on iOS/Android. Offline capable.
 
-### 🤖 AI-Powered Automation
-*   **Magic Input:** Type natural sentences like *"Ate a burger and fries at 5pm"* and let AI parse it into structured data.
-*   **Voice Entry:** Long-press the Magic Button to record audio entries. The AI transcribes and formats them automatically.
-*   **Visual Food Analysis:** Take a photo of your meal, and the AI will analyze and describe it for you.
-*   **Voice Dictation:** Use the microphone icon in any note field for speech-to-text.
-*   *(Note: AI features require an OpenAI API Key)*
+## Deployment Modes
 
-### 📊 Visualization & Analysis
-*   **Timeline View:** See your daily history at a glance.
-*   **Interactive Charts:**
-    *   Compare **Sleep Duration vs. Stool Quality** over the last 30 days.
-    *   Visualize **Symptom Intensity** with a bubble chart.
-*   **Quick Stats:** Dashboard summary of recent averages.
+### 1. Server Mode (Recommended)
+Uses PHP and SQLite. Data is synced to the server and available across devices.
+*   **Backend:** PHP 8.0+
+*   **Database:** SQLite (Zero-config)
 
-### 💻 Technical Highlights
-*   **No Build Step:** Built with Vanilla PHP and modern JavaScript.
-*   **Zero-Config Database:** Uses **SQLite** for easy setup and portability.
-*   **Responsive UI:** Mobile-first design with **Tailwind CSS** (Dark Mode by default).
-*   **PWA Ready:** Installable on iOS and Android devices (manifest & service worker included).
+### 2. Local Mode (Client-Only)
+Works entirely in the browser using IndexedDB. No server setup required.
+*   **Note:** Data is stored on the device only and will not sync between devices.
+*   **AI Features:** Make direct calls to OpenAI from the browser (requires API Key).
 
-## 🚀 Getting Started
+## Setup (Server Mode)
 
-### Prerequisites
-*   **PHP 8.0+**
-*   PHP Extensions: `sqlite3`, `curl`, `mbstring`
-*   **OpenAI API Key** (Required only for AI features)
-
-### Installation
-
-1.  **Clone or Download** the repository.
-
-2.  **Initialize the Database**:
-    Run the initialization script to create the SQLite database file.
+1.  **Clone** the repository.
+2.  **Initialize DB:**
     ```bash
     php init_sqlite.php
     ```
-
-3.  **Create a User Account**:
-    Create your first login credentials.
+3.  **Create User:**
     ```bash
-    php add_user.php your_username
+    php add_user.php <username>
     ```
-    *You will be prompted to enter a password.*
-
-4.  **Start the Server**:
-    For local development, use PHP's built-in server with the secure router:
+4.  **Run:**
     ```bash
     php -S localhost:8080 router.php
     ```
+    Access at `http://localhost:8080`.
 
-5.  **Launch the App**:
-    Open `http://localhost:8080` in your browser and log in.
+## Configuration
 
-### Configuration
+*   **AI Features:** Enter your OpenAI API Key in the app's **Settings** menu.
+*   **HTTPS:** Required for Service Workers and PWA installation in production.
+*   **Customization:** Edit `manifest.json` to change the app name or theme colors.
+*   **PWA Icons:** The app expects `icon-192.png` and `icon-512.png` in the `/icons` directory.
 
-**Setting up AI Features:**
-1.  Log in to the app.
-2.  Go to **Settings** (Gear icon on the dashboard).
-3.  Enter your **OpenAI API Key**.
-4.  Save. The key is stored securely in your user account.
+## Security
 
-## 📱 Mobile Installation (PWA)
+Ensure your web server (Apache/Nginx) blocks access to these sensitive files:
 
-**iOS (Safari):**
-1.  Open the app in Safari.
-2.  Tap the **Share** button.
-3.  Select **"Add to Home Screen"**.
+*   `gut_tracker.sqlite` (and `.sqlite-wal`, `.sqlite-shm`)
+*   `db_config.php`
+*   `add_user.php`
+*   `init_sqlite.php`
 
-**Android (Chrome):**
-1.  Open the app in Chrome.
-2.  Tap the menu (three dots).
-3.  Select **"Install App"** or **"Add to Home Screen"**.
+*An `.htaccess` file is included for Apache environments.*
 
-## 🛠️ Deployment Notes
+## Credits
 
-*   **Root Directory:** Point your web server's document root to the project folder.
-*   **Permissions:** Ensure the web server (e.g., `www-data`) has **write access** to:
-    *   The `gut_tracker.sqlite` file in the project folder.
-    *   The directory containing the database.
-    *   `uploads/` (if enabled).
+*   **Tailwind CSS** for the modern UI.
+*   **Chart.js** for data visualizations.
+*   **SQLite** for the lightweight database.
 
-### 🔒 Security
+## License
 
-*   **Apache:** An `.htaccess` file is included to block access to sensitive files (`.sqlite`, config scripts, etc.). Ensure `AllowOverride All` is enabled in your Apache config.
-*   **Nginx:** Use the provided `nginx.conf.example` as a template. It explicitly denies access to sensitive files.
-*   **CLI Scripts:** `add_user.php` and `init_sqlite.php` include checks to prevent execution via the web.
-    *   Use HTTPS in production to ensure Service Workers and Secure Cookies function correctly.
-
-## 🧪 Testing
-
-The project includes a comprehensive test suite covering API functionality, authentication, and AI features.
-
-### Full Test Suite
-To run all tests (this automatically manages a temporary PHP test server on port 8085):
-```bash
-bash tests/run_tests.sh
-```
-
-### Individual Tests
-You can run specific tests to focus on a particular feature.
-
-1.  **Start the test server** in one terminal:
-    ```bash
-    php -S 127.0.0.1:8085 router.php
-    ```
-
-2.  **Run your chosen test** in another terminal:
-    ```bash
-    php tests/test_api.php
-    php tests/test_image_upload.php
-    # etc.
-    ```
-
-*Note: Individual tests expect the server to be running on `http://127.0.0.1:8085`. If you use a different port, you may need to update `tests/TestHelper.php`.*
-
-### AI Integration Tests
-To run tests that interact with the OpenAI API:
-1.  Create a file named `tests/api_key.txt` containing your OpenAI API key.
-2.  Or pass it directly to the runner: `bash tests/run_tests.sh YOUR_API_KEY`.
-3.  `test_ai_live.php` will be skipped if no key is found.
-
-## 📄 Credits & License
-
-*   **Tailwind CSS** (via CDN) for styling.
-*   **Chart.js** (via CDN) for data visualization.
-*   No other npm dependencies or build tools required.
-
-License: MIT
-
-
+MIT
 
 ## Todo
-- Test: Magic Entry Images
-- AI: Describe Food well
-- Test offline mode.
-- Publish
-- I want this to work as a github-page (static). Can i?
+
+*   Test: Magic Entry Images
+*   AI: Describe Food well
+*   Test offline mode.
+*   Bundle Tailwind, offline chart.js?
