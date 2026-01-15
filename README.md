@@ -73,6 +73,20 @@ To run a single test:
 1. Start the server: `php -S 127.0.0.1:8085 router.php`
 2. Execute the test: `php tests/test_api.php`
 
+## Maintenance
+
+### Updating Version
+To bump the application version (manifest, service worker cache, and UI):
+
+```bash
+./update_version.sh 1.9
+```
+This will:
+1. Update `manifest.json`.
+2. Increment the Service Worker cache version (forcing client reload).
+3. Update the visible version on the Settings page.
+4. Update asset query strings (style.css).
+
 ## Credits
 
 *   **Tailwind CSS** for the modern UI.
