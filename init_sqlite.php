@@ -1,5 +1,9 @@
 <?php
 // init_sqlite.php
+if (php_sapi_name() !== 'cli') {
+    die("CLI only");
+}
+
 putenv('DB_DRIVER=sqlite');
 require_once 'db_config.php';
 

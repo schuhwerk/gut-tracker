@@ -229,13 +229,15 @@ const app = {
         
         // Hydration & Reminder Logic
         const now = new Date();
-        const todayISO = now.toISOString().split('T')[0];
+        const todayISO = utils.formatISO(now).split('T')[0]; // Local YYYY-MM-DD
         
         let waterToday = 0;
         let hasFeelingLog = false;
 
         entries.forEach(e => {
-            const dateStr = e.recorded_at.split(' ')[0]; // YYYY-MM-DD
+            const localDate = utils.fromUTC(e.recorded_at);
+            const dateStr = utils.formatISO(localDate).split('T')[0]; // Local YYYY-MM-DD
+            
             if (e.type === 'drink' && dateStr === todayISO) {
                 waterToday += parseFloat(e.data.amount_liters || 0);
             }
@@ -290,6 +292,10 @@ const app = {
         
         const btn = document.querySelector(`#${formId} .save-btn`);
         if (btn) btn.textContent = 'Save ' + type.charAt(0).toUpperCase() + type.slice(1);
+
+        // Reset Type Selector
+        const typeSelector = document.querySelector(`#${formId} .type-switcher`);
+        if (typeSelector) typeSelector.value = type;
     },
 
     editEntry: (entry) => {
@@ -300,6 +306,37 @@ const app = {
             Router.navigate(`add-${entry.type}`);
             setTimeout(() => app.populateEntry(entry), 50);
         }
+    },
+
+    switchEntryType: (newType) => {
+        const currentView = document.querySelector('.view:not(.hidden)');
+        if (!currentView) return;
+        const currentForm = currentView.querySelector('form');
+        if (!currentForm) return;
+
+        const formData = new FormData(currentForm);
+        const id = formData.get('id');
+        const recorded_at_local = formData.get('recorded_at');
+        const notes = formData.get('notes');
+        
+        const entry = {
+            id: id ? Number(id) : null,
+            type: newType,
+            // populateEntry expects UTC. input is Local.
+            recorded_at: recorded_at_local ? utils.toUTC(recorded_at_local) : new Date().toISOString().replace('T', ' ').substring(0, 19),
+            data: { notes: notes }
+        };
+
+        // Preserve Image Path from Preview if exists
+        const imgPreview = currentForm.querySelector('.current-image-preview img');
+        if (imgPreview) {
+            entry.data.image_path = imgPreview.getAttribute('src');
+        }
+
+        // Switch View
+        Router.showView(`add-${newType}`);
+        app.prepareAddView(`add-${newType}`);
+        app.populateEntry(entry);
     },
 
     populateEntry: (entry) => {
@@ -319,6 +356,10 @@ const app = {
 
         const form = document.getElementById(formId);
         if (!form) return;
+
+        // Set Type Selector
+        const typeSelector = form.querySelector('.type-switcher');
+        if (typeSelector) typeSelector.value = type;
         
         form.querySelector('input[name="id"]').value = entry.id || '';
         const infoEl = document.querySelector(`#view-${viewId} .created-at-info`);
@@ -346,11 +387,7 @@ const app = {
         // Populate fields
         const timeInput = form.querySelector('input[name="recorded_at"]');
         if (timeInput) {
-            let dateStr = entry.recorded_at.replace(' ', 'T');
-            // Check if timezone info is needed or if simple replace is enough (assuming local storage string)
-            // If IDB stores ISO, it has 'T'. If YYYY-MM-DD HH:MM:SS, replace is needed.
-            const d = new Date(dateStr);
-            if (!isNaN(d)) timeInput.value = utils.formatISO(d);
+            timeInput.value = utils.toLocalInput(entry.recorded_at);
         }
         
         if (entry.data.notes) {
@@ -390,8 +427,7 @@ const app = {
                 if (output) output.value = val;
             }
             if (entry.data.bedtime) {
-                const d = new Date(entry.data.bedtime.replace(' ', 'T'));
-                if (!isNaN(d)) form.querySelector('input[name="bedtime"]').value = utils.formatISO(d);
+                form.querySelector('input[name="bedtime"]').value = utils.toLocalInput(entry.data.bedtime);
             }
         } else if (type === 'activity') {
             form.querySelector('input[name="duration_minutes"]').value = entry.data.duration_minutes || '';
@@ -451,7 +487,7 @@ const app = {
             const entry = {
                 id: formData.get('id') ? Number(formData.get('id')) : null,
                 type: type,
-                recorded_at: formData.get('recorded_at'),
+                recorded_at: utils.toUTC(formData.get('recorded_at')),
                 data: {},
                 image_blob: null
             };
@@ -461,11 +497,14 @@ const app = {
                 entry.data.bristol_score = formData.get('bristol_score');
                 entry.data.notes = formData.get('notes');
             } else if (type === 'sleep') {
-                entry.data.bedtime = formData.get('bedtime');
+                const bedLocal = formData.get('bedtime');
+                entry.data.bedtime = utils.toUTC(bedLocal);
                 entry.data.quality = formData.get('quality');
-                const wake = new Date(entry.recorded_at);
-                const bed = new Date(entry.data.bedtime);
-                entry.data.duration_hours = (wake > bed) ? ((wake - bed) / 3600000).toFixed(1) : 0;
+                
+                // Calculate duration using Local times (easier diff)
+                const wakeDate = new Date(formData.get('recorded_at'));
+                const bedDate = new Date(bedLocal);
+                entry.data.duration_hours = (wakeDate > bedDate) ? ((wakeDate - bedDate) / 3600000).toFixed(1) : 0;
             } else if (type === 'feeling') {
                  entry.data.notes = formData.get('notes');
                  entry.data.severity = formData.get('severity');
@@ -769,7 +808,7 @@ const app = {
                            <button onclick="app.cancelMagicEntry(${index})" class="text-gray-500 hover:text-red-400 p-1">✕</button>
                        </div>
                        <div class="text-sm text-gray-300">${content}</div>
-                       <div class="text-xs text-gray-500 mt-2">Recorded at: ${entry.recorded_at.split(' ')[1].substring(0,5)}</div>
+                       <div class="text-xs text-gray-500 mt-2">Recorded at: ${utils.fromUTC(entry.recorded_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
                    </div>
                </div>
                <div class="grid grid-cols-2 gap-2">

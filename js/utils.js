@@ -7,6 +7,32 @@ export const utils = {
     formatISO: (date = new Date()) => {
         return date.toLocaleString('sv').replace(' ', 'T').substring(0, 16);
     },
+
+    // Convert Local Date/String -> UTC String (YYYY-MM-DD HH:MM:SS)
+    toUTC: (dateOrString) => {
+        const d = new Date(dateOrString);
+        if (isNaN(d)) return dateOrString;
+        const pad = (n) => String(n).padStart(2, '0');
+        return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) + ' ' +
+            pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
+    },
+
+    // Convert UTC String -> Local Date Object
+    fromUTC: (utcString) => {
+        if (!utcString) return new Date();
+        // Ensure string is treated as UTC. 
+        // If format is "YYYY-MM-DD HH:MM:SS", appending "Z" usually works for Date.parse
+        let s = utcString.replace(' ', 'T');
+        if (!s.endsWith('Z')) s += 'Z';
+        return new Date(s);
+    },
+
+    // Convert UTC String -> Local String for Inputs (YYYY-MM-DDTHH:MM)
+    toLocalInput: (utcString) => {
+        const d = utils.fromUTC(utcString);
+        if (isNaN(d)) return '';
+        return utils.formatISO(d);
+    },
     
     compressImage: (file, maxWidth = 1024, quality = 0.7) => {
         return new Promise((resolve, reject) => {
@@ -48,5 +74,12 @@ export const utils = {
             uInt8Array[i] = raw.charCodeAt(i);
         }
         return new Blob([uInt8Array], { type: contentType });
+    },
+
+    escapeHtml: (str) => {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
     }
 };

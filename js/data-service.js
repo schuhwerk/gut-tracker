@@ -198,6 +198,7 @@ export const DataService = {
             formData.append('audio_file', audioBlob);
             formData.append('api_key', DataService.apiKey);
             formData.append('client_time', new Date().toISOString().replace('T', ' ').substring(0, 19));
+            formData.append('client_timezone_offset', new Date().getTimezoneOffset());
 
             const res = await fetch('api.php?endpoint=ai_magic_voice', { method: 'POST', body: formData });
             const data = await res.json();
@@ -239,8 +240,15 @@ export const DataService = {
     },
 
     _callAi: async (endpoint, payload) => {
+         // Add client time/timezone to payload if not present (ai_vision/ai_parse)
+         const enrichedPayload = { 
+             ...payload, 
+             client_time: new Date().toISOString().replace('T', ' ').substring(0, 19),
+             client_timezone_offset: new Date().getTimezoneOffset()
+         };
+
          if (DataService.mode === 'HYBRID' && DataService.isAuthenticated) {
-             const body = { ...payload, api_key: DataService.apiKey };
+             const body = { ...enrichedPayload, api_key: DataService.apiKey };
              const res = await fetch(`api.php?endpoint=${endpoint}`, {
                  method: 'POST',
                  headers: { 'Content-Type': 'application/json' },
@@ -262,7 +270,11 @@ export const DataService = {
              if (endpoint === 'ai_parse' || endpoint === 'ai_vision') {
                  openAiEndpoint = 'chat/completions';
                  const messages = [];
-                 const sysPrompt = `You are a health tracking assistant. Date: ${new Date().toLocaleString()}. Return JSON array of objects (types: food, drink, stool, sleep, symptom, activity).
+                 const sysPrompt = `You are a health tracking assistant. 
+                 Current UTC time: ${enrichedPayload.client_time}. 
+                 User Timezone Offset (minutes): ${enrichedPayload.client_timezone_offset}.
+                 CRITICAL: All returned dates/times MUST be in UTC.
+                 Analyze the user's input and extract data into a JSON ARRAY of objects.
                  
                  Activity schema: { "type": "activity", "recorded_at": "YYYY-MM-DD HH:MM:SS", "data": { "duration_minutes": int, "intensity": "Low" | "Medium" | "High", "notes": "description" } }`;
                  

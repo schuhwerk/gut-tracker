@@ -55,9 +55,9 @@ A modern, self-hosted Progressive Web App (PWA) designed to help you track your 
     *You will be prompted to enter a password.*
 
 4.  **Start the Server**:
-    For local development, you can use PHP's built-in server:
+    For local development, use PHP's built-in server with the secure router:
     ```bash
-    php -S localhost:8080 -t public
+    php -S localhost:8080 router.php
     ```
 
 5.  **Launch the App**:
@@ -69,7 +69,7 @@ A modern, self-hosted Progressive Web App (PWA) designed to help you track your 
 1.  Log in to the app.
 2.  Go to **Settings** (Gear icon on the dashboard).
 3.  Enter your **OpenAI API Key**.
-4.  Save. The key is stored securely in your user account (encrypted/hashed depending on implementation) or local session.
+4.  Save. The key is stored securely in your user account.
 
 ## 📱 Mobile Installation (PWA)
 
@@ -85,26 +85,51 @@ A modern, self-hosted Progressive Web App (PWA) designed to help you track your 
 
 ## 🛠️ Deployment Notes
 
-*   **Public Directory:** Point your web server's document root to the `public/` folder.
+*   **Root Directory:** Point your web server's document root to the project folder.
 *   **Permissions:** Ensure the web server (e.g., `www-data`) has **write access** to:
-    *   The `gut_tracker.sqlite` file in the root directory.
-    *    The directory containing the database (so it can handle locking files).
-    *   `public/uploads/` (if enabled for image storage).
-*   **Security:**
-    *   **Do not** expose `gut_tracker.sqlite`, `init_sqlite.php`, or `add_user.php` to the public web.
+    *   The `gut_tracker.sqlite` file in the project folder.
+    *   The directory containing the database.
+    *   `uploads/` (if enabled).
+
+### 🔒 Security
+
+*   **Apache:** An `.htaccess` file is included to block access to sensitive files (`.sqlite`, config scripts, etc.). Ensure `AllowOverride All` is enabled in your Apache config.
+*   **Nginx:** Use the provided `nginx.conf.example` as a template. It explicitly denies access to sensitive files.
+*   **CLI Scripts:** `add_user.php` and `init_sqlite.php` include checks to prevent execution via the web.
     *   Use HTTPS in production to ensure Service Workers and Secure Cookies function correctly.
 
-## 🧪 Running Tests
+## 🧪 Testing
 
-To run the automated test suite (requires the server to be running on localhost:8080):
+The project includes a comprehensive test suite covering API functionality, authentication, and AI features.
 
+### Full Test Suite
+To run all tests (this automatically manages a temporary PHP test server on port 8085):
 ```bash
-php tests/run_tests.php
+bash tests/run_tests.sh
 ```
 
-Individual tests can also be run:
-*   `php tests/test_api.php`: API endpoint validation.
-*   `php tests/test_user_creation.php`: Auth flow validation.
+### Individual Tests
+You can run specific tests to focus on a particular feature.
+
+1.  **Start the test server** in one terminal:
+    ```bash
+    php -S 127.0.0.1:8085 router.php
+    ```
+
+2.  **Run your chosen test** in another terminal:
+    ```bash
+    php tests/test_api.php
+    php tests/test_image_upload.php
+    # etc.
+    ```
+
+*Note: Individual tests expect the server to be running on `http://127.0.0.1:8085`. If you use a different port, you may need to update `tests/TestHelper.php`.*
+
+### AI Integration Tests
+To run tests that interact with the OpenAI API:
+1.  Create a file named `tests/api_key.txt` containing your OpenAI API key.
+2.  Or pass it directly to the runner: `bash tests/run_tests.sh YOUR_API_KEY`.
+3.  `test_ai_live.php` will be skipped if no key is found.
 
 ## 📄 Credits & License
 
@@ -121,3 +146,4 @@ License: MIT
 - AI: Describe Food well
 - Test offline mode.
 - Publish
+- I want this to work as a github-page (static). Can i?

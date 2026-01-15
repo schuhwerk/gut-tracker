@@ -1,0 +1,41 @@
+server {
+    listen 80;
+    server_name example.com;
+    root /var/www/gut-tracker;
+    index index.html;
+
+    # Security: Deny access to sensitive files
+    location ~ \.(sqlite|db)$ {
+        deny all;
+        return 404;
+    }
+
+    location ~ /(db_config\.php|init_sqlite\.php|add_user\.php|README\.md|composer\.json|package\.json) {
+        deny all;
+        return 404;
+    }
+
+    # Security: Deny access to dotfiles (like .git, .env)
+    location ~ /\. {
+        deny all;
+        return 404;
+    }
+
+    # Security: Deny access to tests directory
+    location /tests/ {
+        deny all;
+        return 404;
+    }
+
+    # Serve static files
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    # PHP Handling
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/var/run/php/php8.1-fpm.sock; # Update PHP version as needed
+        fastcgi_intercept_errors on;
+    }
+}

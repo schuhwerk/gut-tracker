@@ -16,9 +16,11 @@ export const UI = {
         let currentDayHeader = null;
 
         entries.forEach((entry) => {
-            const dateObj = new Date(entry.recorded_at);
+            const dateObj = utils.fromUTC(entry.recorded_at);
             const dayKey = dateObj.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-            const isToday = entry.recorded_at.startsWith(todayISO);
+            // Compare local date strings for "Today" check
+            const entryDateISO = utils.formatISO(dateObj).split('T')[0];
+            const isToday = entryDateISO === utils.formatISO(new Date()).split('T')[0];
 
             // Add Day Header
             if (currentDayHeader !== dayKey) {
@@ -48,32 +50,34 @@ export const UI = {
             let icon = '', title = '', content = '', imageHtml = ''; 
 
             if (entry.data && entry.data.image_path) {
-                imageHtml = `<div class="shrink-0"><img src="${entry.data.image_path}" class="w-16 h-16 rounded-lg object-cover border border-dark-600 bg-dark-900" loading="lazy"></div>`;
+                // Sanitize image path to prevent attribute breakout
+                const safePath = utils.escapeHtml(entry.data.image_path);
+                imageHtml = `<div class="shrink-0"><img src="${safePath}" class="w-16 h-16 rounded-lg object-cover border border-dark-600 bg-dark-900" loading="lazy"></div>`;
             }
 
             if (entry.type === 'food') {
                 icon = '🍎'; title = 'Food';
-                if (entry.data.notes) content += `<p class="text-gray-300 mt-1">${entry.data.notes}</p>`;
+                if (entry.data.notes) content += `<p class="text-gray-300 mt-1">${utils.escapeHtml(entry.data.notes)}</p>`;
             } else if (entry.type === 'drink') {
                 icon = '🥤'; title = 'Drink';
-                const amt = entry.data.amount_liters ? `<span class="font-bold text-cyan-400 ml-2">${entry.data.amount_liters}L</span>` : '';
-                if (entry.data.notes) content += `<p class="text-gray-300 mt-1">${entry.data.notes}${amt}</p>`;
+                const amt = entry.data.amount_liters ? `<span class="font-bold text-cyan-400 ml-2">${utils.escapeHtml(String(entry.data.amount_liters))}L</span>` : '';
+                if (entry.data.notes) content += `<p class="text-gray-300 mt-1">${utils.escapeHtml(entry.data.notes)}${amt}</p>`;
                 else if (entry.data.amount_liters) content += `<p class="text-gray-300 mt-1">${amt}</p>`;
             } else if (entry.type === 'feeling' || entry.type === 'symptom') {
                 const isSymptom = entry.type === 'symptom';
                 icon = isSymptom ? '⚡' : '✨'; 
                 title = isSymptom ? 'Symptom' : 'Mood';
                 
-                if (entry.data.notes) content += `<p class="text-gray-300 mt-1 font-medium">${entry.data.notes}</p>`;
+                if (entry.data.notes) content += `<p class="text-gray-300 mt-1 font-medium">${utils.escapeHtml(entry.data.notes)}</p>`;
                 const sev = entry.data.severity || '?';
-                title += ` <span class="text-xs text-secondary ml-2">(${sev}/5)</span>`;
+                title += ` <span class="text-xs text-secondary ml-2">(${utils.escapeHtml(String(sev))}/5)</span>`;
             } else if (entry.type === 'stool') {
-                icon = '💩'; title = `Stool (Type ${entry.data.bristol_score})`;
-                if (entry.data.notes) content += `<p class="text-gray-300 mt-1">${entry.data.notes}</p>`;
+                icon = '💩'; title = `Stool (Type ${utils.escapeHtml(String(entry.data.bristol_score))})`;
+                if (entry.data.notes) content += `<p class="text-gray-300 mt-1">${utils.escapeHtml(entry.data.notes)}</p>`;
             } else if (entry.type === 'sleep') {
                 icon = '😴'; title = 'Sleep';
                 const dur = parseFloat(entry.data.duration_hours).toFixed(1);
-                content += `<div class="text-xl font-bold text-white">${dur}h</div>`;
+                content += `<div class="text-xl font-bold text-white">${utils.escapeHtml(String(dur))}h</div>`;
             } else if (entry.type === 'activity') {
                 // Activity
                 const intensity = entry.data.intensity || '';
@@ -81,11 +85,11 @@ export const UI = {
                 else if (intensity === 'Medium') icon = '🏃';
                 else icon = '🧘'; // Low or default
                 
-                title = `${intensity} Activity`;
+                title = `${utils.escapeHtml(intensity)} Activity`;
                 
-                const dur = entry.data.duration_minutes ? `<span class="font-bold text-emerald-400 ml-2">${entry.data.duration_minutes}m</span>` : '';
+                const dur = entry.data.duration_minutes ? `<span class="font-bold text-emerald-400 ml-2">${utils.escapeHtml(String(entry.data.duration_minutes))}m</span>` : '';
                 
-                if (entry.data.notes) content += `<p class="text-gray-300 mt-1 font-medium">${entry.data.notes}${dur}</p>`;
+                if (entry.data.notes) content += `<p class="text-gray-300 mt-1 font-medium">${utils.escapeHtml(entry.data.notes)}${dur}</p>`;
                 else if (entry.data.duration_minutes) content += `<p class="text-gray-300 mt-1">${dur}</p>`;
             }
             
@@ -152,7 +156,9 @@ export const UI = {
         }
 
         entries.forEach(e => {
-            const k = e.recorded_at.split(' ')[0];
+            const localDate = utils.fromUTC(e.recorded_at);
+            const k = utils.formatISO(localDate).split('T')[0];
+            
             if (!days[k]) return; // Out of range or future
 
             if (e.type === 'stool') {

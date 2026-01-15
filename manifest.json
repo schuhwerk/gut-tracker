@@ -3,7 +3,7 @@
   "version": "1.7",
   "name": "Gut Health Tracker",
   "short_name": "GutTracker",
-  "start_url": "index.php",
+  "start_url": "index.html",
   "display": "standalone",
   "background_color": "#121212",
   "theme_color": "#10b981",

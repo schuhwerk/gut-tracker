@@ -1,7 +1,7 @@
 const CACHE_NAME = 'gut-tracker-v9';
 const ASSETS_TO_CACHE = [
     './',
-    'index.php',
+    'index.html',
     'style.css',
     'manifest.json',
     'icons/icon.svg',

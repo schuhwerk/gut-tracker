@@ -12,7 +12,7 @@ if (file_exists($dbPath)) {
 }
 
 // Debug log
-error_log("DB Config: Resolving path to: $dbPath");
+// error_log("DB Config: Resolving path to: $dbPath");
 
 $dbDir = dirname($dbPath);
 

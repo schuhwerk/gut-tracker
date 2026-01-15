@@ -1,5 +1,5 @@
 <?php
-// public/api.php
+// api.php
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: ' . ($_SERVER['HTTP_ORIGIN'] ?? '*'));
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
@@ -221,11 +221,17 @@ function callOpenAI($endpoint, $payload, $apiKey, $isMultipart = false) {
     return $data;
 }
 
-function getMagicParsingSystemPrompt($currentDate) {
-    return "You are a health tracking assistant. The current date and time is: $currentDate.
+function getMagicParsingSystemPrompt($currentDate, $offset = 0) {
+    return "You are a health tracking assistant. 
+    Current UTC time: $currentDate.
+    User Timezone Offset (minutes): $offset. (Note: JS getTimezoneOffset format. -120 means UTC+2).
+    
     Analyze the user's input and extract data into a JSON ARRAY of objects.
     
-    CRITICAL: ALWAYS respond using the SAME LANGUAGE as the user's input for any text fields (like 'notes'). If they speak German, 'notes' must be German. If English, 'notes' must be English.
+    CRITICAL: 
+    1. ALL dates/times in the output JSON MUST be in UTC (YYYY-MM-DD HH:MM:SS).
+    2. Convert user's relative time (e.g. '10am', 'last night') using the provided User Timezone Offset relative to Current UTC time.
+    3. ALWAYS respond using the SAME LANGUAGE as the user's input for any text fields (like 'notes').
 
     Each object must match one of these schemas:
     
@@ -373,7 +379,22 @@ if ($method === 'POST' && $endpoint === 'entry') {
             jsonResponse(['error' => 'File upload failed (Code: ' . $uploadError . ')'], 400);
         }
         
-        $fileName = uniqid() . '_' . basename($_FILES['image']['name']);
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mimeType = $finfo->file($_FILES['image']['tmp_name']);
+        
+        $allowedMimes = [
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png', 
+            'image/gif' => 'gif',
+            'image/webp' => 'webp'
+        ];
+        
+        if (!array_key_exists($mimeType, $allowedMimes)) {
+            jsonResponse(['error' => 'Invalid file type. Only JPG, PNG, GIF, and WEBP are allowed.'], 400);
+        }
+        
+        $extension = $allowedMimes[$mimeType];
+        $fileName = uniqid('img_', true) . '.' . $extension;
         $targetFilePath = $targetDir . $fileName;
         
         if (move_uploaded_file($_FILES["image"]["tmp_name"], $targetFilePath)) {
@@ -503,12 +524,13 @@ if ($method === 'POST' && $endpoint === 'ai_parse') {
     if (!$apiKey) jsonResponse(['error' => 'NO_API_KEY', 'message' => 'Missing API key'], 400);
 
     $currentDate = $input['client_time'] ?? date('Y-m-d H:i:s');
+    $offset = $input['client_timezone_offset'] ?? 0;
     
     try {
         $data = callOpenAI('chat/completions', [
             "model" => "gpt-4o-mini",
             "messages" => [
-                ["role" => "system", "content" => getMagicParsingSystemPrompt($currentDate)],
+                ["role" => "system", "content" => getMagicParsingSystemPrompt($currentDate, $offset)],
                 ["role" => "user", "content" => $text]
             ],
             "temperature" => 0
@@ -550,12 +572,13 @@ if ($method === 'POST' && $endpoint === 'ai_vision') {
     if (!$apiKey) jsonResponse(['error' => 'NO_API_KEY', 'message' => 'Missing API key'], 400);
 
     $currentDate = $input['client_time'] ?? date('Y-m-d H:i:s');
+    $offset = $input['client_timezone_offset'] ?? 0;
 
     try {
         $data = callOpenAI('chat/completions', [
             "model" => "gpt-4o-mini",
             "messages" => [
-                ["role" => "system", "content" => getMagicParsingSystemPrompt($currentDate)],
+                ["role" => "system", "content" => getMagicParsingSystemPrompt($currentDate, $offset)],
                 ["role" => "user", "content" => [
                     ["type" => "text", "text" => "Analyze this image and extract health tracking data. Identify if it is food, drink, a stool sample (Bristol scale), or related to sleep/symptoms. Return the JSON list."],
                     ["type" => "image_url", "image_url" => ["url" => $imageBase64]]
@@ -613,10 +636,12 @@ if ($method === 'POST' && $endpoint === 'ai_magic_voice') {
 
         // 2. Parse Text
         $currentDate = $_POST['client_time'] ?? date('Y-m-d H:i:s');
+        $offset = $_POST['client_timezone_offset'] ?? 0;
+        
         $data = callOpenAI('chat/completions', [
             "model" => "gpt-4o-mini",
             "messages" => [
-                ["role" => "system", "content" => getMagicParsingSystemPrompt($currentDate)],
+                ["role" => "system", "content" => getMagicParsingSystemPrompt($currentDate, $offset)],
                 ["role" => "user", "content" => $text]
             ],
             "temperature" => 0
