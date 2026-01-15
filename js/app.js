@@ -539,13 +539,27 @@ const app = {
             const formData = new FormData(form);
             const formId = `form-${type}`;
             
-            const entry = {
+            let entry = {
                 id: formData.get('id') ? Number(formData.get('id')) : null,
                 type: type,
                 recorded_at: utils.toUTC(formData.get('recorded_at')),
                 data: {},
                 image_blob: null
             };
+
+            if (entry.id) {
+                try {
+                    const existing = await DataService.getEntry(entry.id);
+                    if (existing) {
+                        // Merge existing properties (preserve created_at, user_id, synced, etc.)
+                        entry = { 
+                            ...existing, 
+                            ...entry, 
+                            data: { ...existing.data, ...entry.data } 
+                        };
+                    }
+                } catch(e) { console.warn('Failed to fetch existing for merge', e); }
+            }
             
             // Extract data
             if (type === 'stool') {

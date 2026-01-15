@@ -1,7 +1,7 @@
 {
   "id": "/gut-tracker/",
     "orientation": "portrait",
-    "version": "1.12",
+    "version": "1.13",
   "name": "Gut Health Tracker",
   "short_name": "GutTracker",
   "start_url": "index.html",
