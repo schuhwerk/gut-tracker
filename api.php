@@ -557,6 +557,25 @@ if ($method === 'POST' && $endpoint === 'delete') {
     if (!$entryId) {
         jsonResponse(['error' => 'Missing ID'], 400);
     }
+
+    // Attempt to delete associated image
+    $stmt = $pdo->prepare("SELECT data FROM entries WHERE id = ? AND user_id = ?");
+    $stmt->execute([$entryId, $userId]);
+    $entry = $stmt->fetch();
+
+    if ($entry && !empty($entry['data'])) {
+        $data = json_decode($entry['data'], true);
+        if (is_array($data) && !empty($data['image_path'])) {
+            // Ensure path is safe and inside uploads
+            $imagePath = $data['image_path'];
+            if (strpos($imagePath, 'uploads/') === 0 && strpos($imagePath, '..') === false) {
+                $filePath = __DIR__ . '/' . $imagePath;
+                if (file_exists($filePath)) {
+                    @unlink($filePath);
+                }
+            }
+        }
+    }
     
     $stmt = $pdo->prepare("DELETE FROM entries WHERE id = ? AND user_id = ?");
     $stmt->execute([$entryId, $userId]);
