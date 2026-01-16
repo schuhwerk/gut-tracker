@@ -452,8 +452,8 @@ const app = {
         } else if (type === 'drink') {
             form.querySelector('input[name="amount_liters"]').value = entry.data.amount_liters || '';
         } else if (type === 'feeling' || type === 'symptom') {
-            const val = entry.data.severity || 3;
-            const input = form.querySelector('input[name="severity"]');
+            const val = entry.data.mood_score || entry.data.severity || 3;
+            const input = form.querySelector('input[name="mood_score"]');
             if (input) {
                 input.value = val;
                 const output = input.parentElement.querySelector('output');
@@ -576,7 +576,7 @@ const app = {
                 entry.data.duration_hours = (wakeDate > bedDate) ? ((wakeDate - bedDate) / 3600000).toFixed(1) : 0;
             } else if (type === 'feeling') {
                  entry.data.notes = formData.get('notes');
-                 entry.data.severity = formData.get('severity');
+                 entry.data.mood_score = formData.get('mood_score');
             } else if (type === 'drink') {
                  entry.data.notes = formData.get('notes');
                  entry.data.amount_liters = formData.get('amount_liters');
@@ -872,8 +872,8 @@ const app = {
             } else if (entry.type === 'feeling' || entry.type === 'symptom') {
                 icon = '⚡'; title = 'Mood/Feeling';
                 if (entry.data.notes) content += `<p class="text-gray-300 mt-1 font-medium">${entry.data.notes}</p>`;
-                const sev = entry.data.severity || '?';
-                title += ` <span class="text-xs text-emerald-400 ml-2">Sc: ${sev}</span>`;
+                const score = entry.data.mood_score || entry.data.severity || '?';
+                title += ` <span class="text-xs text-emerald-400 ml-2">Mood: ${score}</span>`;
             } else if (entry.type === 'stool') {
                 icon = '💩'; title = `Stool (Type ${entry.data.bristol_score})`;
                 if (entry.data.notes) content += `<p class="text-gray-300 italic mt-1">"${entry.data.notes}"</p>`;
@@ -1199,47 +1199,7 @@ const app = {
         // Fetch all entries (limit 5000 should cover most users for now)
         const entries = await DataService.getEntries(5000);
         
-        // Sort Chronologically (Oldest First) for causality analysis
-        entries.sort((a, b) => new Date(a.recorded_at) - new Date(b.recorded_at));
-
-        let output = "GUT TRACKER EXPORT (AI OPTIMIZED)\n";
-        output += "Format: [Timestamp] TYPE - Details\n";
-        output += "=====================================\n\n";
-
-        entries.forEach(e => {
-            const date = new Date(e.recorded_at);
-            // Format: YYYY-MM-DD HH:MM
-            const timeStr = date.toISOString().replace('T', ' ').substring(0, 16);
-            const type = e.type.toUpperCase();
-            
-            output += `[${timeStr}] ${type}\n`;
-            
-            if (e.data.notes) {
-                output += `  Notes: ${e.data.notes}\n`;
-            }
-
-            if (e.type === 'food') {
-                // Notes already handled
-            } else if (e.type === 'drink') {
-                if (e.data.amount_liters) output += `  Amount: ${e.data.amount_liters}L\n`;
-            } else if (e.type === 'stool') {
-                if (e.data.bristol_score) output += `  Bristol Scale: ${e.data.bristol_score}\n`;
-            } else if (e.type === 'sleep') {
-                if (e.data.quality) output += `  Quality: ${e.data.quality}/5\n`;
-                if (e.data.duration_hours) output += `  Duration: ${e.data.duration_hours}h\n`;
-                if (e.data.bedtime) {
-                    const bed = new Date(e.data.bedtime).toISOString().replace('T', ' ').substring(0, 16);
-                    output += `  Bedtime: ${bed}\n`;
-                }
-            } else if (e.type === 'feeling' || e.type === 'symptom') {
-                if (e.data.severity) output += `  Severity: ${e.data.severity}/5\n`;
-            } else if (e.type === 'activity') {
-                 if (e.data.duration_minutes) output += `  Duration: ${e.data.duration_minutes} min\n`;
-                 if (e.data.intensity) output += `  Intensity: ${e.data.intensity}\n`;
-            }
-            
-            output += "\n";
-        });
+        const output = utils.generateAIExport(entries);
 
         const dataStr = "data:text/plain;charset=utf-8," + encodeURIComponent(output);
         const downloadAnchorNode = document.createElement('a');

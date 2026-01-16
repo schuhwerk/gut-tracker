@@ -1,0 +1,20 @@
+GUT TRACKER EXPORT (FOR AI ANALYSIS)
+Format: [HH:MM] TYPE [Metrics]: Notes
+=====================================
+LEGEND:
+Stool (Bristol Scale 1-7):
+  1-2: Constipation | 3-4: Normal | 5-7: Diarrhea
+Mood & Sleep Quality (1-5):
+  1: Very Bad/Awful | 5: Excellent/Great
+Activity Intensity: Low, Medium, High
+=====================================
+
+# 2023-10-27
+[12:30] FOOD: Oatmeal with berries
+[13:00] DRINK [0.5L]: Green Tea
+[14:00] STOOL [Bristol:4]: Perfect
+[22:00] SLEEP [8h, Qual:5/5]
+
+# 2023-10-28
+[08:00] FEELING [Mood:2/5]: Mild Nausea
+[09:00] ACTIVITY [45min, Medium]: Morning Jog

@@ -239,7 +239,7 @@ function getMagicParsingSystemPrompt($currentDate, $offset = 0) {
     2. Drink: { \"type\": \"drink\", \"recorded_at\": \"YYYY-MM-DD HH:MM:SS\", \"data\": { \"notes\": \"description of drink\", \"amount_liters\": float (ESTIMATE if not specified: cup=0.25, mug=0.35, glass=0.3, bottle=0.5, can=0.33, sip=0.05) } }
     3. Stool: { \"type\": \"stool\", \"recorded_at\": \"YYYY-MM-DD HH:MM:SS\", \"data\": { \"bristol_score\": 1-7 (int), \"notes\": \"optional details\" } }
     4. Sleep: { \"type\": \"sleep\", \"recorded_at\": \"YYYY-MM-DD HH:MM:SS\" (wake time), \"data\": { \"duration_hours\": float, \"quality\": 1-5 (int), \"bedtime\": \"YYYY-MM-DD HH:MM:SS\" (start time) } }
-    5. Symptom: { \"type\": \"symptom\", \"recorded_at\": \"YYYY-MM-DD HH:MM:SS\", \"data\": { \"notes\": \"description of sensation/pain\", \"severity\": 1-5 (int, optional) } }
+    5. Symptom: { \"type\": \"symptom\", \"recorded_at\": \"YYYY-MM-DD HH:MM:SS\", \"data\": { \"notes\": \"description of sensation/pain\", \"mood_score\": 1-5 (int, optional, 1=Bad, 5=Great) } }
     6. Activity: { \"type\": \"activity\", \"recorded_at\": \"YYYY-MM-DD HH:MM:SS\", \"data\": { \"duration_minutes\": int, \"intensity\": \"Low\" | \"Medium\" | \"High\", \"notes\": \"description\" } }
     
     Rules:
@@ -536,6 +536,72 @@ if ($method === 'GET' && $endpoint === 'export') {
     header('Content-Type: application/json');
     header('Content-Disposition: attachment; filename="gut_tracker_export.json"');
     echo json_encode($entries, JSON_PRETTY_PRINT);
+    exit;
+}
+
+if ($method === 'GET' && $endpoint === 'ai_export') {
+    requireAuth();
+    $userId = $_SESSION['user_id'];
+    
+    $stmt = $pdo->prepare("SELECT * FROM entries WHERE user_id = ? ORDER BY recorded_at ASC");
+    $stmt->execute([$userId]);
+    $entries = $stmt->fetchAll();
+    
+    $output = "GUT TRACKER EXPORT (FOR AI ANALYSIS)\n";
+    $output .= "Format: [HH:MM] TYPE [Metrics]: Notes\n";
+    $output .= "=====================================\n";
+    $output .= "LEGEND:\n";
+    $output .= "Stool (Bristol Scale 1-7):\n";
+    $output .= "  1-2: Constipation | 3-4: Normal | 5-7: Diarrhea\n";
+    $output .= "Mood & Sleep Quality (1-5):\n";
+    $output .= "  1: Very Bad/Awful | 5: Excellent/Great\n";
+    $output .= "Activity Intensity: Low, Medium, High\n";
+    $output .= "=====================================\n";
+
+    $currentDay = '';
+
+    foreach ($entries as $e) {
+        $data = json_decode($e['data'], true) ?: [];
+        $recordedAt = $e['recorded_at'];
+        $dateStr = substr($recordedAt, 0, 10);
+        $timeStr = substr($recordedAt, 11, 5);
+        
+        if ($dateStr !== $currentDay) {
+            $output .= "\n# $dateStr\n";
+            $currentDay = $dateStr;
+        }
+        
+        $type = strtoupper($e['type']);
+        $metrics = [];
+        
+        if ($e['type'] === 'drink') {
+            if (!empty($data['amount_liters'])) $metrics[] = $data['amount_liters'] . 'L';
+        } else if ($e['type'] === 'stool') {
+            if (!empty($data['bristol_score'])) $metrics[] = 'Bristol:' . $data['bristol_score'];
+        } else if ($e['type'] === 'sleep') {
+            if (!empty($data['duration_hours'])) $metrics[] = $data['duration_hours'] . 'h';
+            if (!empty($data['quality'])) $metrics[] = 'Qual:' . $data['quality'] . '/5';
+        } else if ($e['type'] === 'feeling' || $e['type'] === 'symptom') {
+            $score = $data['mood_score'] ?? $data['severity'] ?? null;
+            if ($score !== null) $metrics[] = "Mood:$score/5";
+        } else if ($e['type'] === 'activity') {
+             if (!empty($data['duration_minutes'])) $metrics[] = $data['duration_minutes'] . 'min';
+             if (!empty($data['intensity'])) $metrics[] = $data['intensity'];
+        }
+        
+        $line = "[$timeStr] $type";
+        if (!empty($metrics)) $line .= " [" . implode(', ', $metrics) . "]";
+        
+        if (!empty($data['notes'])) {
+            $line .= ": " . $data['notes'];
+        }
+        
+        $output .= $line . "\n";
+    }
+
+    header('Content-Type: text/plain');
+    header('Content-Disposition: attachment; filename="gut_tracker_ai_export.txt"');
+    echo $output;
     exit;
 }
 

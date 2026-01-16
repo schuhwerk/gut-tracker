@@ -64,13 +64,10 @@ export const UI = {
                 if (entry.data.notes) content += `<p class="text-gray-300 mt-1">${utils.escapeHtml(entry.data.notes)}${amt}</p>`;
                 else if (entry.data.amount_liters) content += `<p class="text-gray-300 mt-1">${amt}</p>`;
             } else if (entry.type === 'feeling' || entry.type === 'symptom') {
-                const isSymptom = entry.type === 'symptom';
-                icon = isSymptom ? '⚡' : '✨'; 
-                title = isSymptom ? 'Symptom' : 'Mood';
-                
+                icon = '⚡'; title = 'Mood/Feeling';
                 if (entry.data.notes) content += `<p class="text-gray-300 mt-1 font-medium">${utils.escapeHtml(entry.data.notes)}</p>`;
-                const sev = entry.data.severity || '?';
-                title += ` <span class="text-xs text-secondary ml-2">(${utils.escapeHtml(String(sev))}/5)</span>`;
+                const score = entry.data.mood_score || entry.data.severity || '?';
+                title += ` <span class="text-xs text-emerald-400 ml-2">Mood: ${score}</span>`;
             } else if (entry.type === 'stool') {
                 icon = '💩'; title = `Stool (Type ${utils.escapeHtml(String(entry.data.bristol_score))})`;
                 if (entry.data.notes) content += `<p class="text-gray-300 mt-1">${utils.escapeHtml(entry.data.notes)}</p>`;
@@ -176,7 +173,7 @@ export const UI = {
             } else if (e.type === 'feeling' || e.type === 'symptom') {
                 symptoms.push({
                     dateStr: k,
-                    y: parseInt(e.data.severity || 1),
+                    y: parseInt(e.data.mood_score || e.data.severity || 1),
                     note: e.data.notes,
                     type: e.type
                 });

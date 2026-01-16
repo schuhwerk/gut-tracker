@@ -86,5 +86,64 @@ export const utils = {
         const div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
+    },
+
+    generateAIExport: (entries) => {
+        // Sort Chronologically (Oldest First)
+        const sorted = [...entries].sort((a, b) => new Date(a.recorded_at) - new Date(b.recorded_at));
+
+        let output = "GUT TRACKER EXPORT (FOR AI ANALYSIS)\n";
+        output += "Format: [HH:MM] TYPE [Metrics]: Notes\n";
+        output += "=====================================\n";
+        output += "LEGEND:\n";
+        output += "Stool (Bristol Scale 1-7):\n";
+        output += "  1-2: Constipation | 3-4: Normal | 5-7: Diarrhea\n";
+        output += "Mood & Sleep Quality (1-5):\n";
+        output += "  1: Very Bad/Awful | 5: Excellent/Great\n";
+        output += "Activity Intensity: Low, Medium, High\n";
+        output += "=====================================\n";
+
+        let currentDay = '';
+
+        sorted.forEach(e => {
+            const localDate = utils.fromUTC(e.recorded_at);
+            const iso = utils.formatISO(localDate);
+            const dateStr = iso.split('T')[0];
+            const timeStr = iso.split('T')[1];
+            
+            if (dateStr !== currentDay) {
+                output += `\n# ${dateStr}\n`;
+                currentDay = dateStr;
+            }
+            
+            const type = e.type.toUpperCase();
+            let metrics = [];
+            
+            if (e.type === 'drink') {
+                if (e.data.amount_liters) metrics.push(`${e.data.amount_liters}L`);
+            } else if (e.type === 'stool') {
+                if (e.data.bristol_score) metrics.push(`Bristol:${e.data.bristol_score}`);
+            } else if (e.type === 'sleep') {
+                if (e.data.duration_hours) metrics.push(`${e.data.duration_hours}h`);
+                if (e.data.quality) metrics.push(`Qual:${e.data.quality}/5`);
+            } else if (e.type === 'feeling' || e.type === 'symptom') {
+                const score = e.data.mood_score || e.data.severity;
+                if (score) metrics.push(`Mood:${score}/5`);
+            } else if (e.type === 'activity') {
+                 if (e.data.duration_minutes) metrics.push(`${e.data.duration_minutes}min`);
+                 if (e.data.intensity) metrics.push(`${e.data.intensity}`);
+            }
+            
+            let line = `[${timeStr}] ${type}`;
+            if (metrics.length > 0) line += ` [${metrics.join(', ')}]`;
+            
+            if (e.data.notes) {
+                line += `: ${e.data.notes}`;
+            }
+            
+            output += line + '\n';
+        });
+        
+        return output;
     }
 };
