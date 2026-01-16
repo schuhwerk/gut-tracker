@@ -23,13 +23,13 @@ if (!$entryId) {
 }
 
 echo "3. Update Food Entry (Simulate Frontend)...";
-// Frontend sends 'recorded_at' as '2026-01-11T12:00' (from datetime-local)
+// Frontend sends 'event_at' as '2026-01-11T12:00' (from datetime-local)
 // And it sends FormData (multipart/form-data)
 $updateData = ['notes' => 'Updated Food'];
 $postData = [
     'id' => $entryId,
     'type' => 'food',
-    'recorded_at' => '2026-01-11T12:00', 
+    'event_at' => '2026-01-11T12:00', 
     'data' => json_encode($updateData)
 ];
 
@@ -54,7 +54,7 @@ require_once __DIR__ . '/../db_config.php';
 
 echo "4. Testing Update on Entry with NULL Data (Crash Test)...\n";
 // Force insert a row with NULL data directly
-$pdo->exec("INSERT INTO entries (user_id, type, recorded_at, data) VALUES (1, 'test', date('now'), NULL)");
+$pdo->exec("INSERT INTO entries (user_id, type, event_at, data) VALUES (1, 'test', date('now'), NULL)");
 $nullId = $pdo->lastInsertId();
 
 // Try to update it via API

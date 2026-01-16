@@ -1,5 +1,6 @@
 <?php
 // api.php
+ob_start();
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: ' . ($_SERVER['HTTP_ORIGIN'] ?? '*'));
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
@@ -12,6 +13,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 // Helper to send JSON response
 function jsonResponse($data, $code = 200) {
+    $output = ob_get_clean();
+    if (!empty($output)) {
+        error_log("Unexpected output before jsonResponse: " . $output);
+    }
     http_response_code($code);
     echo json_encode($data);
     exit;
@@ -29,6 +34,13 @@ if (!file_exists($configFile)) {
 
 try {
     require_once $configFile;
+    require_once __DIR__ . '/services/AiService.php';
+    require_once __DIR__ . '/services/DatabaseService.php';
+    require_once __DIR__ . '/services/UserService.php';
+    require_once __DIR__ . '/services/EntryService.php';
+
+    $userService = new UserService($pdo);
+    $entryService = new EntryService($pdo);
 } catch (Exception $e) {
     error_log("DB Connect Error: " . $e->getMessage());
     $debugInfo = '';
@@ -109,37 +121,7 @@ class SQLiteSessionHandler implements SessionHandlerInterface {
 
 // Auto-initialize schema if needed
 try {
-    $pdo->exec("CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL,
-        password_hash TEXT NOT NULL,
-        api_key TEXT DEFAULT NULL
-    )");
-    
-    // Attempt migration for existing users table
-    try {
-        $pdo->exec("ALTER TABLE users ADD COLUMN api_key TEXT DEFAULT NULL");
-    } catch (Exception $e) {
-        // Only ignore "duplicate column" error
-        if (strpos($e->getMessage(), 'duplicate column') === false) {
-             error_log("Migration Warning: " . $e->getMessage());
-        }
-    }
-
-    $pdo->exec("CREATE TABLE IF NOT EXISTS entries (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        type TEXT NOT NULL,
-        recorded_at TEXT NOT NULL,
-        data TEXT DEFAULT NULL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )");
-
-    $pdo->exec("CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        access INTEGER,
-        data TEXT
-    )");
+    DatabaseService::initializeSchema($pdo);
 } catch (Exception $e) {
     // If schema creation fails (e.g. read-only DB), we'll catch it later or here
     error_log("Schema Init Error: " . $e->getMessage());
@@ -170,99 +152,26 @@ function requireAuth() {
     }
 }
 
-function getUserApiKey($pdo, $userId) {
-    try {
-        $stmt = $pdo->prepare("SELECT api_key FROM users WHERE id = ?");
-        $stmt->execute([$userId]);
-        $user = $stmt->fetch();
-        if (!$user) return '';
-        return $user['api_key'] ?? '';
-    } catch (PDOException $e) {
-        // If column is missing (migration failed), return empty key
-        if (strpos($e->getMessage(), 'no such column') !== false) {
-            return '';
-        }
-        throw $e;
-    }
-}
-
-function callOpenAI($endpoint, $payload, $apiKey, $isMultipart = false) {
-    $ch = curl_init('https://api.openai.com/v1/' . $endpoint);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    
-    $headers = ["Authorization: Bearer $apiKey"];
-    if (!$isMultipart) {
-        $headers[] = "Content-Type: application/json";
-        $payload = json_encode($payload);
-    }
-
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-    
-    $response = curl_exec($ch);
-    if (curl_errno($ch)) {
-        throw new Exception('Request Failed: ' . curl_error($ch));
-    }
-    curl_close($ch);
-    
-    $data = json_decode($response, true);
-    if (isset($data['error'])) {
-        error_log("OpenAI API Error: " . json_encode($data['error']));
-        $msg = $data['error']['message'] ?? 'Unknown OpenAI Error';
-        $code = $data['error']['code'] ?? '';
-
-        if (strpos($msg, 'api_key') !== false || $code === 'invalid_api_key') {
-             jsonResponse(['error' => 'INVALID_API_KEY', 'message' => 'Invalid API Key provided.'], 401);
-        }
-        throw new Exception('OpenAI Error: ' . $msg);
-    }
-    return $data;
-}
-
-function getMagicParsingSystemPrompt($currentDate, $offset = 0) {
-    return "You are a health tracking assistant. 
-    Current UTC time: $currentDate.
-    User Timezone Offset (minutes): $offset. (Note: JS getTimezoneOffset format. -120 means UTC+2).
-    
-    Analyze the user's input and extract data into a JSON ARRAY of objects.
-    
-    CRITICAL: 
-    1. ALL dates/times in the output JSON MUST be in UTC (YYYY-MM-DD HH:MM:SS).
-    2. Convert user's relative time (e.g. '10am', 'last night') using the provided User Timezone Offset relative to Current UTC time.
-    3. ALWAYS respond using the SAME LANGUAGE as the user's input for any text fields (like 'notes').
-
-    Each object must match one of these schemas:
-    
-    1. Food: { \"type\": \"food\", \"recorded_at\": \"YYYY-MM-DD HH:MM:SS\", \"data\": { \"notes\": \"description of food\" } }
-    2. Drink: { \"type\": \"drink\", \"recorded_at\": \"YYYY-MM-DD HH:MM:SS\", \"data\": { \"notes\": \"description of drink\", \"amount_liters\": float (ESTIMATE if not specified: cup=0.25, mug=0.35, glass=0.3, bottle=0.5, can=0.33, sip=0.05) } }
-    3. Stool: { \"type\": \"stool\", \"recorded_at\": \"YYYY-MM-DD HH:MM:SS\", \"data\": { \"bristol_score\": 1-7 (int), \"notes\": \"optional details\" } }
-    4. Sleep: { \"type\": \"sleep\", \"recorded_at\": \"YYYY-MM-DD HH:MM:SS\" (wake time), \"data\": { \"duration_hours\": float, \"quality\": 1-5 (int), \"bedtime\": \"YYYY-MM-DD HH:MM:SS\" (start time) } }
-    5. Symptom: { \"type\": \"symptom\", \"recorded_at\": \"YYYY-MM-DD HH:MM:SS\", \"data\": { \"notes\": \"description of sensation/pain\", \"mood_score\": 1-5 (int, optional, 1=Bad, 5=Great) } }
-    6. Activity: { \"type\": \"activity\", \"recorded_at\": \"YYYY-MM-DD HH:MM:SS\", \"data\": { \"duration_minutes\": int, \"intensity\": \"Low\" | \"Medium\" | \"High\", \"notes\": \"description\" } }
-    
-    Rules:
-    - Return a valid JSON LIST.
-    - Identify ALL distinct items.
-    - Infer dates/times based on context.
-    - Return ONLY the JSON string, no markdown.";
-}
-
-function parseAiJsonContent($content) {
-    $content = str_replace(['```json', '```'], '', $content);
-    $parsed = json_decode(trim($content), true);
-    if (!$parsed) {
-        throw new Exception('Failed to parse AI response: ' . $content);
-    }
-    return $parsed;
-}
-
 // Global error handler to catch notices/warnings
 set_error_handler(function($errno, $errstr, $errfile, $errline) {
     if (!(error_reporting() & $errno)) return false;
     throw new ErrorException($errstr, 0, $errno, $errfile, $errline);
 });
+
+// Helper to get AI Config for current user
+function getAiConfig($userService, $userId, $inputApiKey = null) {
+    // If client provided specific key (e.g. from local storage override), use it as legacy config
+    if ($inputApiKey) return $inputApiKey;
+    
+    $user = $userService->getUser($userId);
+    if (!$user) return '';
+
+    if (!empty($user['ai_config'])) {
+        return json_decode($user['ai_config'], true);
+    }
+    // Fallback to legacy column
+    return $user['api_key'] ?? '';
+}
 
 // Global Exception Handler for API Logic
 try {
@@ -294,23 +203,18 @@ if ($method === 'POST' && $endpoint === 'create_user') {
         jsonResponse(['error' => 'Missing credentials'], 400);
     }
 
-    $stmt = $pdo->prepare("SELECT id FROM users WHERE username = ?");
-    $stmt->execute([$username]);
-    if ($stmt->fetch()) {
-        jsonResponse(['error' => 'User already exists'], 400);
-    }
-
-    $hash = password_hash($password, PASSWORD_DEFAULT);
-    $stmt = $pdo->prepare("INSERT INTO users (username, password_hash) VALUES (?, ?)");
-    if ($stmt->execute([$username, $hash])) {
-        jsonResponse(['message' => 'User created']);
-    } else {
-        jsonResponse(['error' => 'Database error'], 500);
+    try {
+        if ($userService->createUser($username, $password)) {
+            jsonResponse(['message' => 'User created']);
+        } else {
+            jsonResponse(['error' => 'Database error'], 500);
+        }
+    } catch (Exception $e) {
+        jsonResponse(['error' => $e->getMessage()], 400);
     }
 }
 
 if ($method === 'POST' && $endpoint === 'login') {
-    // Simple login - in real app, verify hash
     $username = $input['username'] ?? '';
     $password = $input['password'] ?? '';
 
@@ -318,13 +222,10 @@ if ($method === 'POST' && $endpoint === 'login') {
         jsonResponse(['error' => 'Missing credentials'], 400);
     }
 
-    $stmt = $pdo->prepare("SELECT id, password_hash FROM users WHERE username = ?");
-    $stmt->execute([$username]);
-    $user = $stmt->fetch();
-
-    if ($user && password_verify($password, $user['password_hash'])) {
-        $_SESSION['user_id'] = $user['id'];
-        jsonResponse(['message' => 'Login successful', 'user_id' => $user['id']]);
+    $userId = $userService->verifyLogin($username, $password);
+    if ($userId) {
+        $_SESSION['user_id'] = $userId;
+        jsonResponse(['message' => 'Login successful', 'user_id' => $userId]);
     } else {
         jsonResponse(['error' => 'Invalid credentials'], 401);
     }
@@ -338,26 +239,45 @@ if ($method === 'POST' && $endpoint === 'logout') {
 if ($method === 'POST' && $endpoint === 'delete_all') {
     requireAuth();
     $userId = $_SESSION['user_id'];
-    
-    // Safety check just in case
-    if (!$userId) jsonResponse(['error' => 'Unauthorized'], 401);
-
-    $stmt = $pdo->prepare("DELETE FROM entries WHERE user_id = ?");
-    $stmt->execute([$userId]);
-    
+    $entryService->deleteAllEntries($userId);
     jsonResponse(['message' => 'All entries deleted']);
 }
 
 if ($method === 'POST' && $endpoint === 'update_settings') {
     requireAuth();
     $userId = $_SESSION['user_id'];
-    $apiKey = $input['api_key'] ?? ''; // Can be empty to clear it
+    $apiKey = $input['api_key'] ?? ''; 
+    $debugMode = isset($input['debug_mode']) ? (int)$input['debug_mode'] : 0;
+    $aiConfig = $input['ai_config'] ?? null;
 
-    $stmt = $pdo->prepare("UPDATE users SET api_key = ? WHERE id = ?");
-    if ($stmt->execute([$apiKey, $userId])) {
+    if ($userService->updateSettings($userId, $apiKey, $debugMode, $aiConfig)) {
         jsonResponse(['message' => 'Settings updated']);
     } else {
         jsonResponse(['error' => 'Failed to update settings'], 500);
+    }
+}
+
+if ($method === 'POST' && $endpoint === 'test_api_key') {
+    requireAuth();
+    $userId = $_SESSION['user_id'];
+    $config = getAiConfig($userService, $userId, $input['api_key'] ?? $input['ai_config'] ?? null);
+    
+    // If ai_config was passed as object, use it
+    if (isset($input['ai_config']) && is_array($input['ai_config'])) {
+        $config = $input['ai_config'];
+    }
+
+    if (!$config) jsonResponse(['error' => 'NO_API_KEY', 'message' => 'Missing API configuration'], 400);
+
+    try {
+        $ai = new AiService($config);
+        $ai->verifyKey();
+        jsonResponse(['message' => 'API Key is valid and working']);
+    } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'INVALID_API_KEY') !== false) {
+             jsonResponse(['error' => 'INVALID_API_KEY', 'message' => $e->getMessage()], 401);
+        }
+        jsonResponse(['error' => 'Verification failed: ' . $e->getMessage()], 400);
     }
 }
 
@@ -412,7 +332,7 @@ if ($method === 'POST' && $endpoint === 'entry') {
     }
     
     $type = $_POST['type'] ?? $input['type'] ?? null;
-    $recordedAt = $_POST['recorded_at'] ?? $input['recorded_at'] ?? gmdate('Y-m-d H:i:s');
+    $recordedAt = $_POST['event_at'] ?? $input['event_at'] ?? gmdate('Y-m-d H:i:s');
     $recordedAt = str_replace('T', ' ', $recordedAt);
     if (strlen($recordedAt) === 16) $recordedAt .= ':00';
     $entryId = $_POST['id'] ?? $input['id'] ?? null;
@@ -430,12 +350,10 @@ if ($method === 'POST' && $endpoint === 'entry') {
 
     if ($entryId) {
         // Fetch existing data to handle image cleanup/preservation
-        $stmt = $pdo->prepare("SELECT data FROM entries WHERE id = ? AND user_id = ?");
-        $stmt->execute([$entryId, $userId]);
-        $existing = $stmt->fetch();
+        $existing = $entryService->getEntry($userId, $entryId);
         
         if ($existing && !empty($existing['data'])) {
-            $existingData = json_decode($existing['data'], true);
+            $existingData = $existing['data'];
             
             if (is_array($existingData) && !empty($existingData['image_path'])) {
                 $oldPath = $existingData['image_path'];
@@ -463,21 +381,12 @@ if ($method === 'POST' && $endpoint === 'entry') {
         jsonResponse(['error' => 'Type is required'], 400);
     }
 
-    if ($entryId) {
-        // UPDATE
-        $stmt = $pdo->prepare("UPDATE entries SET type = ?, recorded_at = ?, data = ? WHERE id = ? AND user_id = ?");
-        $result = $stmt->execute([$type, $recordedAt, json_encode($jsonData), $entryId, $userId]);
-        if ($stmt->rowCount() === 0) {
-             // Check if it failed because ID didn't exist or permissions
-             // For now just assume success if no error, but rowCount 0 means no change or not found.
-        }
-        jsonResponse(['message' => 'Entry updated', 'id' => $entryId, 'image_path' => $jsonData['image_path'] ?? null]);
-    } else {
-        // INSERT
-        $stmt = $pdo->prepare("INSERT INTO entries (user_id, type, recorded_at, data) VALUES (?, ?, ?, ?)");
-        $stmt->execute([$userId, $type, $recordedAt, json_encode($jsonData)]);
-        jsonResponse(['message' => 'Entry saved', 'id' => $pdo->lastInsertId(), 'image_path' => $jsonData['image_path'] ?? null]);
-    }
+    $savedId = $entryService->saveEntry($userId, $type, $recordedAt, $jsonData, $entryId);
+    jsonResponse([
+        'message' => $entryId ? 'Entry updated' : 'Entry saved', 
+        'id' => $savedId, 
+        'image_path' => $jsonData['image_path'] ?? null
+    ]);
 }
 
 if ($method === 'GET' && $endpoint === 'entries') {
@@ -488,50 +397,22 @@ if ($method === 'GET' && $endpoint === 'entries') {
     $id = $_GET['id'] ?? null;
     
     if ($id) {
-        $stmt = $pdo->prepare("SELECT * FROM entries WHERE user_id = ? AND id = ?");
-        $stmt->execute([$userId, $id]);
-        $entry = $stmt->fetch();
-        
+        $entry = $entryService->getEntry($userId, $id);
         if ($entry) {
-            $decoded = json_decode($entry['data']);
-            $entry['data'] = $decoded ?: new stdClass();
             jsonResponse($entry);
         } else {
             jsonResponse(['error' => 'Entry not found'], 404);
         }
     }
 
-    if ($days) {
-        $date = date('Y-m-d H:i:s', strtotime("-$days days"));
-        $stmt = $pdo->prepare("SELECT * FROM entries WHERE user_id = ? AND recorded_at >= ? ORDER BY recorded_at DESC, id DESC");
-        $stmt->execute([$userId, $date]);
-    } else {
-        $stmt = $pdo->prepare("SELECT * FROM entries WHERE user_id = ? ORDER BY recorded_at DESC, id DESC LIMIT " . (int)$limit);
-        $stmt->execute([$userId]);
-    }
-
-    $entries = $stmt->fetchAll();
-    
-    // Decode JSON data for frontend
-    foreach ($entries as &$entry) {
-        $decoded = json_decode($entry['data']);
-        $entry['data'] = $decoded ?: new stdClass();
-    }
-    
+    $entries = $entryService->getEntries($userId, $limit, $days);
     jsonResponse($entries);
 }
 
 if ($method === 'GET' && $endpoint === 'export') {
     requireAuth();
     $userId = $_SESSION['user_id'];
-    
-    $stmt = $pdo->prepare("SELECT * FROM entries WHERE user_id = ? ORDER BY recorded_at DESC, id DESC");
-    $stmt->execute([$userId]);
-    $entries = $stmt->fetchAll();
-    
-    foreach ($entries as &$entry) {
-        $entry['data'] = json_decode($entry['data']);
-    }
+    $entries = $entryService->getEntries($userId, 10000); // High limit for export
     
     header('Content-Type: application/json');
     header('Content-Disposition: attachment; filename="gut_tracker_export.json"');
@@ -542,10 +423,7 @@ if ($method === 'GET' && $endpoint === 'export') {
 if ($method === 'GET' && $endpoint === 'ai_export') {
     requireAuth();
     $userId = $_SESSION['user_id'];
-    
-    $stmt = $pdo->prepare("SELECT * FROM entries WHERE user_id = ? ORDER BY recorded_at ASC");
-    $stmt->execute([$userId]);
-    $entries = $stmt->fetchAll();
+    $entries = $entryService->getEntriesForAiExport($userId);
     
     $output = "GUT TRACKER EXPORT (FOR AI ANALYSIS)\n";
     $output .= "Format: [HH:MM] TYPE [Metrics]: Notes\n";
@@ -562,7 +440,7 @@ if ($method === 'GET' && $endpoint === 'ai_export') {
 
     foreach ($entries as $e) {
         $data = json_decode($e['data'], true) ?: [];
-        $recordedAt = $e['recorded_at'];
+        $recordedAt = $e['event_at'];
         $dateStr = substr($recordedAt, 0, 10);
         $timeStr = substr($recordedAt, 11, 5);
         
@@ -609,27 +487,22 @@ if ($method === 'POST' && $endpoint === 'ai_parse') {
     requireAuth();
     $text = $input['text'] ?? '';
     $userId = $_SESSION['user_id'];
-    $apiKey = $input['api_key'] ?? getUserApiKey($pdo, $userId);
+    // Use getAiConfig
+    $config = getAiConfig($userService, $userId, $input['api_key'] ?? null);
 
     if (!$text) jsonResponse(['error' => 'Missing text'], 400);
-    if (!$apiKey) jsonResponse(['error' => 'NO_API_KEY', 'message' => 'Missing API key'], 400);
+    if (!$config) jsonResponse(['error' => 'NO_API_KEY', 'message' => 'Missing API configuration'], 400);
 
     $currentDate = $input['client_time'] ?? gmdate('Y-m-d H:i:s');
     $offset = $input['client_timezone_offset'] ?? 0;
     
     try {
-        $data = callOpenAI('chat/completions', [
-            "model" => "gpt-4o-mini",
-            "messages" => [
-                ["role" => "system", "content" => getMagicParsingSystemPrompt($currentDate, $offset)],
-                ["role" => "user", "content" => $text]
-            ],
-            "temperature" => 0
-        ], $apiKey);
-        
-        $content = $data['choices'][0]['message']['content'] ?? '{}';
-        jsonResponse(parseAiJsonContent($content));
+        $ai = new AiService($config);
+        jsonResponse($ai->parseText($text, $currentDate, $offset));
     } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'INVALID_API_KEY') !== false) {
+             jsonResponse(['error' => 'INVALID_API_KEY', 'message' => $e->getMessage()], 401);
+        }
         jsonResponse(['error' => $e->getMessage()], 400);
     }
 }
@@ -643,29 +516,7 @@ if ($method === 'POST' && $endpoint === 'delete') {
         jsonResponse(['error' => 'Missing ID'], 400);
     }
 
-    // Attempt to delete associated image
-    $stmt = $pdo->prepare("SELECT data FROM entries WHERE id = ? AND user_id = ?");
-    $stmt->execute([$entryId, $userId]);
-    $entry = $stmt->fetch();
-
-    if ($entry && !empty($entry['data'])) {
-        $data = json_decode($entry['data'], true);
-        if (is_array($data) && !empty($data['image_path'])) {
-            // Ensure path is safe and inside uploads
-            $imagePath = $data['image_path'];
-            if (strpos($imagePath, 'uploads/') === 0 && strpos($imagePath, '..') === false) {
-                $filePath = __DIR__ . '/' . $imagePath;
-                if (file_exists($filePath)) {
-                    @unlink($filePath);
-                }
-            }
-        }
-    }
-    
-    $stmt = $pdo->prepare("DELETE FROM entries WHERE id = ? AND user_id = ?");
-    $stmt->execute([$entryId, $userId]);
-    
-    if ($stmt->rowCount() > 0) {
+    if ($entryService->deleteEntry($userId, $entryId, __DIR__ . '/')) {
         jsonResponse(['message' => 'Entry deleted']);
     } else {
         jsonResponse(['error' => 'Entry not found or unauthorized'], 404);
@@ -676,30 +527,33 @@ if ($method === 'POST' && $endpoint === 'ai_vision') {
     requireAuth();
     $imageBase64 = $input['image_base64'] ?? '';
     $userId = $_SESSION['user_id'];
-    $apiKey = $input['api_key'] ?? getUserApiKey($pdo, $userId);
+    $config = getAiConfig($userService, $userId, $input['api_key'] ?? null);
 
     if (!$imageBase64) jsonResponse(['error' => 'Missing image'], 400);
-    if (!$apiKey) jsonResponse(['error' => 'NO_API_KEY', 'message' => 'Missing API key'], 400);
+    if (!$config) jsonResponse(['error' => 'NO_API_KEY', 'message' => 'Missing API configuration'], 400);
 
     $currentDate = $input['client_time'] ?? gmdate('Y-m-d H:i:s');
     $offset = $input['client_timezone_offset'] ?? 0;
 
     try {
-        $data = callOpenAI('chat/completions', [
-            "model" => "gpt-4o-mini",
+        $ai = new AiService($config);
+        $data = $ai->callOpenAI('chat/completions', [
             "messages" => [
-                ["role" => "system", "content" => getMagicParsingSystemPrompt($currentDate, $offset)],
+                ["role" => "system", "content" => $ai->getMagicParsingSystemPrompt($currentDate, $offset)],
                 ["role" => "user", "content" => [
                     ["type" => "text", "text" => "Analyze this image and extract health tracking data. Identify if it is food, drink, a stool sample (Bristol scale), or related to sleep/symptoms. Return the JSON list."],
                     ["type" => "image_url", "image_url" => ["url" => $imageBase64]]
                 ]]
             ],
             "max_tokens" => 500
-        ], $apiKey);
+        ]);
 
         $content = $data['choices'][0]['message']['content'] ?? '[]';
-        jsonResponse(parseAiJsonContent($content));
+        jsonResponse($ai->parseAiJsonContent($content));
     } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'INVALID_API_KEY') !== false) {
+             jsonResponse(['error' => 'INVALID_API_KEY', 'message' => $e->getMessage()], 401);
+        }
         jsonResponse(['error' => $e->getMessage()], 400);
     }
 }
@@ -707,20 +561,24 @@ if ($method === 'POST' && $endpoint === 'ai_vision') {
 if ($method === 'POST' && $endpoint === 'ai_transcribe') {
     requireAuth();
     $userId = $_SESSION['user_id'];
-    $apiKey = $input['api_key'] ?? $_POST['api_key'] ?? getUserApiKey($pdo, $userId);
+    $config = getAiConfig($userService, $userId, $input['api_key'] ?? $_POST['api_key'] ?? null);
 
     if (empty($_FILES['audio_file'])) jsonResponse(['error' => 'Missing audio file'], 400);
-    if (!$apiKey) jsonResponse(['error' => 'NO_API_KEY', 'message' => 'Missing API key'], 400);
+    if (!$config) jsonResponse(['error' => 'NO_API_KEY', 'message' => 'Missing API configuration'], 400);
 
     try {
+        $ai = new AiService($config);
         $cfile = new CURLFile($_FILES['audio_file']['tmp_name'], $_FILES['audio_file']['type'], 'audio.webm');
-        $data = callOpenAI('audio/transcriptions', [
+        $data = $ai->callOpenAI('audio/transcriptions', [
             'file' => $cfile,
             'model' => 'whisper-1'
-        ], $apiKey, true);
+        ], true);
         
         jsonResponse(['text' => $data['text'] ?? '']);
     } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'INVALID_API_KEY') !== false) {
+             jsonResponse(['error' => 'INVALID_API_KEY', 'message' => $e->getMessage()], 401);
+        }
         jsonResponse(['error' => $e->getMessage()], 400);
     }
 }
@@ -728,18 +586,19 @@ if ($method === 'POST' && $endpoint === 'ai_transcribe') {
 if ($method === 'POST' && $endpoint === 'ai_magic_voice') {
     requireAuth();
     $userId = $_SESSION['user_id'];
-    $apiKey = $input['api_key'] ?? $_POST['api_key'] ?? getUserApiKey($pdo, $userId);
+    $config = getAiConfig($userService, $userId, $input['api_key'] ?? $_POST['api_key'] ?? null);
 
     if (empty($_FILES['audio_file'])) jsonResponse(['error' => 'Missing audio file'], 400);
-    if (!$apiKey) jsonResponse(['error' => 'NO_API_KEY', 'message' => 'Missing API key'], 400);
+    if (!$config) jsonResponse(['error' => 'NO_API_KEY', 'message' => 'Missing API configuration'], 400);
 
     try {
+        $ai = new AiService($config);
         // 1. Transcribe
         $cfile = new CURLFile($_FILES['audio_file']['tmp_name'], $_FILES['audio_file']['type'], 'audio.webm');
-        $transcribeData = callOpenAI('audio/transcriptions', [
+        $transcribeData = $ai->callOpenAI('audio/transcriptions', [
             'file' => $cfile,
             'model' => 'whisper-1'
-        ], $apiKey, true);
+        ], true);
 
         $text = $transcribeData['text'] ?? '';
         if (!$text) jsonResponse(['error' => 'No speech detected'], 400);
@@ -748,29 +607,57 @@ if ($method === 'POST' && $endpoint === 'ai_magic_voice') {
         $currentDate = $_POST['client_time'] ?? gmdate('Y-m-d H:i:s');
         $offset = $_POST['client_timezone_offset'] ?? 0;
         
-        $data = callOpenAI('chat/completions', [
-            "model" => "gpt-4o-mini",
-            "messages" => [
-                ["role" => "system", "content" => getMagicParsingSystemPrompt($currentDate, $offset)],
-                ["role" => "user", "content" => $text]
-            ],
-            "temperature" => 0
-        ], $apiKey);
+        $items = $ai->parseText($text, $currentDate, $offset);
         
-        $content = $data['choices'][0]['message']['content'] ?? '{}';
-        jsonResponse(parseAiJsonContent($content));
+        // Log if debug mode is on
+        $user = $userService->getUser($userId);
+        if ($user && $user['debug_mode']) {
+            $logStmt = $pdo->prepare("INSERT INTO logs (user_id, type, message, context) VALUES (?, ?, ?, ?)");
+            $logStmt->execute([
+                $userId, 
+                'ai_voice', 
+                'AI Interaction', 
+                json_encode(['prompt' => "Transcribed: $text", 'response' => json_encode($items)])
+            ]);
+
+            // Keep max 500 entries per user
+            $pdo->prepare("DELETE FROM logs WHERE user_id = ? AND id NOT IN (SELECT id FROM logs WHERE user_id = ? ORDER BY id DESC LIMIT 500)")->execute([$userId, $userId]);
+        }
+        
+        jsonResponse($items);
     } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'INVALID_API_KEY') !== false) {
+             jsonResponse(['error' => 'INVALID_API_KEY', 'message' => $e->getMessage()], 401);
+        }
         jsonResponse(['error' => $e->getMessage()], 400);
     }
 }
 
+if ($method === 'GET' && $endpoint === 'get_logs') {
+    requireAuth();
+    $userId = $_SESSION['user_id'];
+    
+    $stmt = $pdo->prepare("SELECT * FROM logs WHERE user_id = ? ORDER BY id DESC LIMIT 20");
+    $stmt->execute([$userId]);
+    jsonResponse(['logs' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+}
+
 if ($method === 'GET' && $endpoint === 'check_auth') {
      if (isset($_SESSION['user_id'])) {
-         $apiKey = getUserApiKey($pdo, $_SESSION['user_id']);
+         $user = $userService->getUser($_SESSION['user_id']);
+         
+         $aiConfig = null;
+         if (!empty($user['ai_config'])) {
+             $aiConfig = json_decode($user['ai_config'], true);
+         }
+         
          jsonResponse([
              'authenticated' => true, 
              'user_id' => $_SESSION['user_id'],
-             'api_key' => $apiKey // Return DB key so frontend can sync
+             'username' => $user['username'] ?? 'user',
+             'api_key' => $user['api_key'] ?? '',
+             'ai_config' => $aiConfig,
+             'debug_mode' => (int)($user['debug_mode'] ?? 0)
          ]);
      } else {
          jsonResponse(['authenticated' => false]);

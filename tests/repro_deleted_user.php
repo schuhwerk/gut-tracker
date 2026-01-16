@@ -2,7 +2,7 @@
 require_once __DIR__ . '/TestHelper.php';
 
 // Use correct port
-$t = new TestHelper('http://localhost:8123/api.php');
+$t = new TestHelper();
 
 // 1. Create unique user & Login
 $username = 'del_' . uniqid();

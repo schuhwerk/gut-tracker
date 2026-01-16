@@ -1,4 +1,2 @@
 User-agent: *
-Disallow: /tests/
-Disallow: /router.php
-Disallow: /.git/
+Allow: /

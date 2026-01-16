@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/TestHelper.php';
 
-$t = new TestHelper('http://127.0.0.1:8085/api.php');
+$t = new TestHelper();
 
 // 0. Create User & Login
 $username = 'test_type_' . time();
@@ -16,7 +16,7 @@ if ($res['code'] !== 200) die("Failed to login");
 echo "Creating Food Entry...\n";
 $res = $t->request('POST', 'entry', [
     'type' => 'food',
-    'recorded_at' => '2025-01-01 12:00:00',
+    'event_at' => '2025-01-01 12:00:00',
     'data' => json_encode(['notes' => 'Test Food'])
 ]);
 $t->assertStatus($res, 200);
@@ -29,7 +29,7 @@ echo "Updating Type to Drink...\n";
 $res = $t->request('POST', 'entry', [
     'id' => $id,
     'type' => 'drink',
-    'recorded_at' => '2025-01-01 12:00:00',
+    'event_at' => '2025-01-01 12:00:00',
     'data' => json_encode(['notes' => 'Converted to Drink', 'amount_liters' => 0.5])
 ]);
 $t->assertStatus($res, 200);

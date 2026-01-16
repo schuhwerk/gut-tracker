@@ -16,7 +16,7 @@ export const UI = {
         let currentDayHeader = null;
 
         entries.forEach((entry) => {
-            const dateObj = utils.fromUTC(entry.recorded_at);
+            const dateObj = utils.fromUTC(entry.event_at);
             const dayKey = dateObj.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
             // Compare local date strings for "Today" check
             const entryDateISO = utils.formatISO(dateObj).split('T')[0];
@@ -125,7 +125,7 @@ export const UI = {
 
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-        const recentEntries = entries.filter(e => new Date(e.recorded_at) >= thirtyDaysAgo);
+        const recentEntries = entries.filter(e => new Date(e.event_at) >= thirtyDaysAgo);
         
         let totalSleep = 0, sleepCount = 0, totalStools = 0, totalDrinks = 0;
         
@@ -160,7 +160,7 @@ export const UI = {
         }
 
         entries.forEach(e => {
-            const localDate = utils.fromUTC(e.recorded_at);
+            const localDate = utils.fromUTC(e.event_at);
             const k = utils.formatISO(localDate).split('T')[0];
             
             if (!days[k]) return; // Out of range or future

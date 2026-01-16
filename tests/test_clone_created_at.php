@@ -28,12 +28,12 @@ sleep(2);
 
 // 2. Clone the entry
 // Note: We simulate app.cloneEntry behavior:
-// newEntry = { ...original, id: null, recorded_at: now, created_at: now }
+// newEntry = { ...original, id: null, event_at: now, created_at: now }
 // The test helper doesn't have cloneEntry, we do it via request.
 
 $cloneData = [
     'type' => $original['type'],
-    'recorded_at' => gmdate('Y-m-d H:i:s'),
+    'event_at' => gmdate('Y-m-d H:i:s'),
     'data' => $original['data'], // This is already an array in the helper response? 
     // Wait, TestHelper's request body for GET entries is already decoded.
 ];
@@ -44,7 +44,7 @@ $cloneData = [
 // Re-encode data for the POST request
 $postData = [
     'type' => $original['type'],
-    'recorded_at' => gmdate('Y-m-d H:i:s'),
+    'event_at' => gmdate('Y-m-d H:i:s'),
     'data' => json_encode($original['data'])
 ];
 
@@ -53,14 +53,14 @@ $postData = [
 // In app.js we added: created_at: utils.toUTC(new Date())
 // So we should send it in 'data'? No, created_at is a top level column in entries table.
 // Wait, api.php 'entry' endpoint handles:
-// $stmt = $pdo->prepare("INSERT INTO entries (user_id, type, recorded_at, data) VALUES (?, ?, ?, ?)");
+// $stmt = $pdo->prepare("INSERT INTO entries (user_id, type, event_at, data) VALUES (?, ?, ?, ?)");
 // It DOES NOT take created_at from input. The DB has DEFAULT CURRENT_TIMESTAMP.
 
 // Re-read init_sqlite.php:
 // "created_at TEXT DEFAULT CURRENT_TIMESTAMP"
 
 // Re-read api.php INSERT:
-// "INSERT INTO entries (user_id, type, recorded_at, data) VALUES (?, ?, ?, ?)"
+// "INSERT INTO entries (user_id, type, event_at, data) VALUES (?, ?, ?, ?)"
 
 // So the server AUTOMATICALLY sets created_at on INSERT.
 // If I clone an entry, the server will naturally give it a new created_at because it's a new INSERT.
@@ -70,7 +70,7 @@ $postData = [
             const newEntry = {
                 ...originalEntry,
                 id: null,
-                recorded_at: utils.toUTC(new Date()),
+                event_at: utils.toUTC(new Date()),
                 created_at: utils.toUTC(new Date()),
                 synced: 0 
             };
@@ -92,7 +92,7 @@ $postData = [
 // DataService.saveEntry sends:
 /*
                 formData.append('type', entry.type);
-                formData.append('recorded_at', entry.recorded_at);
+                formData.append('event_at', entry.event_at);
                 formData.append('data', JSON.stringify(entry.data));
 */
 // It DOES NOT send `created_at`. So the server always uses `CURRENT_TIMESTAMP`.

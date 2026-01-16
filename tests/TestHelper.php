@@ -5,8 +5,13 @@ class TestHelper {
     private $cookieFile;
     private $debug;
 
-    public function __construct($baseUrl = 'http://127.0.0.1:8085/api.php', $cookieFile = null) {
-        $this->baseUrl = $baseUrl;
+    public function __construct($baseUrl = null, $cookieFile = null) {
+        if ($baseUrl === null) {
+            $envUrl = getenv('TEST_BASE_URL');
+            $this->baseUrl = $envUrl ?: 'http://127.0.0.1:8087/api.php';
+        } else {
+            $this->baseUrl = $baseUrl;
+        }
         $this->cookieFile = $cookieFile ?? sys_get_temp_dir() . '/test_cookie_' . uniqid() . '.txt';
         $this->debug = getenv('DEBUG') === '1';
         

@@ -11,12 +11,12 @@ try {
     $helper->request('POST', 'create_user', ['username' => $username, 'password' => $password]);
     $helper->login($username, $password);
 
-    // 2. Test recorded_at standardization (Frontend style T -> space)
-    echo "--- Testing recorded_at Format ---\n";
+    // 2. Test event_at standardization (Frontend style T -> space)
+    echo "--- Testing event_at Format ---\n";
     $recordedAtInput = '2026-01-15T14:30';
     $res = $helper->request('POST', 'entry', [
         'type' => 'food',
-        'recorded_at' => $recordedAtInput,
+        'event_at' => $recordedAtInput,
         'data' => ['notes' => 'Test date format']
     ]);
     
@@ -26,7 +26,7 @@ try {
     // Fetch and check format
     $res = $helper->request('GET', 'entries', ['id' => $entryId]);
     $helper->assertStatus($res, 200);
-    $savedRecordedAt = $res['body']['recorded_at'];
+    $savedRecordedAt = $res['body']['event_at'];
     $savedCreatedAt = $res['body']['created_at'];
 
     echo "Recorded At: $savedRecordedAt\n";
@@ -34,7 +34,7 @@ try {
 
     $helper->assert(
         preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $savedRecordedAt),
-        "recorded_at matches YYYY-MM-DD HH:MM:SS"
+        "event_at matches YYYY-MM-DD HH:MM:SS"
     );
     
     $helper->assert(
@@ -42,11 +42,11 @@ try {
         "created_at matches YYYY-MM-DD HH:MM:SS"
     );
 
-    // 3. Test recorded_at fallback (gmdate)
-    echo "--- Testing recorded_at Fallback ---\n";
+    // 3. Test event_at fallback (gmdate)
+    echo "--- Testing event_at Fallback ---\n";
     $res = $helper->request('POST', 'entry', [
         'type' => 'drink',
-        // recorded_at omitted
+        // event_at omitted
         'data' => ['notes' => 'Test fallback']
     ]);
     $helper->assertStatus($res, 200);
@@ -54,8 +54,8 @@ try {
 
     $res = $helper->request('GET', 'entries', ['id' => $fallbackId]);
     $helper->assert(
-        preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $res['body']['recorded_at']),
-        "Fallback recorded_at matches YYYY-MM-DD HH:MM:SS"
+        preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $res['body']['event_at']),
+        "Fallback event_at matches YYYY-MM-DD HH:MM:SS"
     );
 
     echo "\nAll Date/Time Tests Passed! ✅\n";

@@ -29,7 +29,7 @@
     <!-- SVG Favicon -->
     <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icons/icon.png">
-    <link rel="stylesheet" href="style.css?v=1.13">
+    <link rel="stylesheet" href="style.css?v=1.20">
     <style>
         /* Custom scrollbar for dark mode */
         body::-webkit-scrollbar { width: 8px; }
@@ -139,7 +139,10 @@
                 <div class="flex justify-between items-center mb-4">
                     <div class="flex items-center gap-3">
                         <img src="icons/icon.png" alt="Gut Logo" class="w-8 h-8">
-                        <h2 class="text-xl font-bold text-white">Timeline</h2>
+                        <div class="flex flex-col">
+                            <h2 class="text-xl font-bold text-white leading-none">Timeline</h2>
+                            <span id="user-status-display" class="text-[10px] text-gray-500 font-mono mt-1"></span>
+                        </div>
                     </div>
                     <div class="flex gap-4 items-center">
                         <button id="btn-status-icon" onclick="app.showAllAlerts()" class="hidden text-orange-800 hover:text-orange-500 transition-all duration-[3000ms]" title="Status Alert">
@@ -178,25 +181,32 @@
                 </div>
             </header>
 
-            <!-- BETA WARNING DASHBOARD -->
-            <div id="beta-warning-dash" class="hidden mx-4 mt-4 p-4 bg-orange-900/20 border border-orange-500/30 rounded-2xl relative">
-                <button onclick="app.dismissBetaWarning()" class="absolute top-2 right-2 text-orange-500/50 hover:text-orange-500 transition-colors">
+
+
+            <!-- Welcome Box -->
+            <div id="welcome-box" class="hidden mx-4 mt-4 p-4 bg-emerald-900/20 border border-emerald-500/30 rounded-2xl relative">
+                <button onclick="app.dismissWelcomeBox()" class="absolute top-2 right-2 text-emerald-500/50 hover:text-emerald-500 transition-colors">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
-                <h3 class="text-orange-400 font-bold mb-1 flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                    </svg>
-                    Beta Software
+                <h3 class="text-emerald-400 font-bold mb-1 flex items-center gap-2">
+                    <span class="text-lg">👋</span> Welcome to Gut Tracker
                 </h3>
                 <p class="text-xs text-gray-300 leading-relaxed mb-3">
-                    Structure may change without notice. No backward compatibility guaranteed. <strong>Data loss is possible.</strong>
+                    Track your food, sleep, and symptoms to discover how they affect your gut health. This app was built to help identify patterns and improve your life by relating what you consume and how you rest to your intestinal well-being.
                 </p>
-                <button onclick="app.dismissBetaWarning()" class="w-full bg-orange-900/40 hover:bg-orange-900/60 text-orange-200 border border-orange-500/30 font-bold py-2 rounded-lg text-xs transition-colors">
-                    I Understand
-                </button>
+
+                <div class="space-y-2">
+                    <div class="flex items-start gap-2 text-[10px] text-emerald-400/80">
+                        <span class="font-bold">LOG:</span>
+                        <span class="text-gray-400">Use the bottom buttons to manually log food, drinks, stools, sleep or feelings.</span>
+                    </div>
+                    <div class="flex items-start gap-2 text-[10px] text-emerald-400/80">
+                        <span class="font-bold">AI:</span>
+                        <span class="text-gray-400">Tap the center camera or hold the mic button to quickly log using AI.</span>
+                    </div>
+                </div>
             </div>
 
             <!-- Login Warning Box -->
@@ -220,35 +230,27 @@
                 </button>
             </div>
 
-            <!-- Welcome Box -->
-            <div id="welcome-box" class="hidden mx-4 mt-4 p-4 bg-emerald-900/20 border border-emerald-500/30 rounded-2xl relative">
-                <button onclick="app.dismissWelcomeBox()" class="absolute top-2 right-2 text-emerald-500/50 hover:text-emerald-500 transition-colors">
+            <!-- BETA WARNING DASHBOARD -->
+            <div id="beta-warning-dash" class="hidden mx-4 mt-4 p-4 bg-orange-900/20 border border-orange-500/30 rounded-2xl relative">
+                <button onclick="app.dismissBetaWarning()" class="absolute top-2 right-2 text-orange-500/50 hover:text-orange-500 transition-colors">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-5 h-5">
                       <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
-                <h3 class="text-emerald-400 font-bold mb-1 flex items-center gap-2">
-                    <span class="text-lg">👋</span> Welcome to Gut Tracker
+                <h3 class="text-orange-400 font-bold mb-1 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                    </svg>
+                    Beta Software
                 </h3>
                 <p class="text-xs text-gray-300 leading-relaxed mb-3">
-                    Track your food, sleep, and symptoms to discover how they affect your gut health. This app was built to help identify patterns and improve your life by relating what you consume and how you rest to your intestinal well-being.
-                </p>
-                <!-- BETA NOTE -->
-                <div class="mb-4 p-2 bg-orange-900/30 border border-orange-500/30 rounded-lg text-[10px] text-orange-200/90 leading-tight">
-                    <strong>⚠️ Beta Software:</strong> Structure is still evolving and backwards compatibility is not yet intended. 
+                    Structure is still evolving and backwards compatibility is not yet intended. <strong>Data loss is possible.</strong><br>
                     We'd love your help testing! Please report bugs or suggestions at 
                     <a href="https://github.com/schuhwerk/gut-tracker/issues" target="_blank" class="text-orange-400 underline decoration-orange-500/50 hover:text-orange-300">GitHub Issues</a>.
-                </div>
-                <div class="space-y-2">
-                    <div class="flex items-start gap-2 text-[10px] text-emerald-400/80">
-                        <span class="font-bold">LOG:</span>
-                        <span class="text-gray-400">Use the bottom buttons to manually log food, drinks, stools, sleep or feelings.</span>
-                    </div>
-                    <div class="flex items-start gap-2 text-[10px] text-emerald-400/80">
-                        <span class="font-bold">AI:</span>
-                        <span class="text-gray-400">Tap the center camera or hold the mic button to quickly log using AI.</span>
-                    </div>
-                </div>
+                </p>
+                <button onclick="app.dismissBetaWarning()" class="w-full bg-orange-900/40 hover:bg-orange-900/60 text-orange-200 border border-orange-500/30 font-bold py-2 rounded-lg text-xs transition-colors">
+                    I Understand
+                </button>
             </div>
             
             <div id="timeline" class="flex-1 p-4 space-y-4 overflow-y-auto pb-64">
@@ -346,12 +348,47 @@
                     <!-- Hidden username to prevent accessibility warning for password field -->
                     <input type="text" name="username" autocomplete="username" class="hidden" aria-hidden="true">
                     
-                    <div class="space-y-2">
-                        <label class="block text-sm font-medium text-gray-400">OpenAI API Key</label>
-                        <input type="password" id="api-key" placeholder="sk-..." autocomplete="new-password"
-                            class="w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
-                        <p class="text-xs text-gray-600">Stored locally in your browser by default.</p>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-400 mb-1">AI Provider</label>
+                            <select id="ai-provider" class="w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none" onchange="app.toggleAiFields()">
+                                <option value="openai">OpenAI (Default)</option>
+                                <option value="deepseek">DeepSeek</option>
+                                <option value="custom">Custom / Other</option>
+                            </select>
+                        </div>
+
+                        <div class="space-y-2">
+                            <label class="block text-sm font-medium text-gray-400">API Key</label>
+                            <input type="password" id="api-key" placeholder="sk-..." autocomplete="new-password"
+                                class="w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
+                        </div>
+
+                        <div id="ai-advanced-fields" class="space-y-4 hidden">
+                            <div class="space-y-2">
+                                <label class="block text-sm font-medium text-gray-400">Base URL</label>
+                                <input type="text" id="ai-base-url" placeholder="https://api.openai.com/v1"
+                                    class="w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none font-mono text-sm">
+                            </div>
+                            <div class="space-y-2">
+                                <label class="block text-sm font-medium text-gray-400">Model Name</label>
+                                <input type="text" id="ai-model" placeholder="gpt-4o-mini"
+                                    class="w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none font-mono text-sm">
+                            </div>
+                        </div>
+                        
+                        <p class="text-xs text-gray-600">Stored locally in your browser (and synced if logged in).</p>
                     </div>
+
+                    <div class="flex items-center justify-between bg-dark-800 p-3 rounded-xl border border-dark-700">
+                        <span class="text-sm font-medium text-gray-400">Debug Mode</span>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="debug-mode" class="sr-only peer">
+                            <div class="w-11 h-6 bg-dark-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                        </label>
+                    </div>
+                    
+                    <button type="button" id="btn-show-logs" onclick="app.showAiLogs()" class="w-full bg-dark-800 border border-dark-700 py-3 rounded-xl font-bold text-blue-400 hover:bg-dark-700 text-sm hidden">Show Logs</button>
                     
                     <button type="submit" class="w-full bg-primary hover:bg-emerald-600 py-3 rounded-xl font-bold text-white shadow-lg text-sm">Save Locally</button>
                 </form>
@@ -367,13 +404,14 @@
                         <button onclick="app.exportDataForAI()" class="flex-1 bg-dark-800 border border-dark-700 py-3 rounded-xl font-bold text-emerald-500 hover:bg-dark-700 text-sm">Export for AI</button>
                      </div>
                      <button id="btn-login-settings" onclick="app.navigate('login')" class="w-full bg-primary py-3 rounded-xl font-bold text-white hover:bg-emerald-600 hidden">Login / Sync Account</button>
+                     <div id="user-info-settings" class="text-center text-xs text-gray-500 mb-1 hidden">Logged in as <span id="settings-username" class="font-bold text-gray-300"></span></div>
                      <button id="btn-logout" onclick="app.logout()" class="w-full bg-dark-800 border border-dark-700 py-3 rounded-xl font-bold text-orange-400 hover:bg-dark-700 hidden">Logout</button>
                      <button onclick="app.deleteAllData()" class="w-full bg-red-900/20 border border-red-900/50 py-3 rounded-xl font-bold text-red-500 hover:bg-red-900/40">Delete All Data</button>
                 </div>
 
                 <div class="pt-10 border-t border-dark-800 flex flex-col items-center gap-2">
                      <button onclick="window.location.reload()" class="w-full text-gray-400 text-sm">Reload App</button>
-                     <span id="app-version" class="text-[10px] text-gray-600 font-mono">v1.13</span>
+                     <span id="app-version" class="text-[10px] text-gray-600 font-mono">v1.20</span>
                 </div>
             </div>
         </div>
@@ -391,6 +429,17 @@
                 <div class="text-center">
                     <button onclick="app.navigate('dashboard')" class="text-gray-400 text-sm hover:text-white transition-colors">Done</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- AI LOGS VIEW -->
+        <div id="view-ai-logs" class="view hidden flex-1 flex flex-col bg-dark-900">
+             <header class="p-4 border-b border-dark-800 flex items-center gap-4">
+                <button onclick="history.back()" class="text-gray-400 hover:text-white">← Back</button>
+                <h2 class="text-lg font-bold">AI Debug Logs</h2>
+            </header>
+            <div id="ai-logs-content" class="p-4 space-y-4 overflow-y-auto flex-1">
+                <!-- Logs will be injected here -->
             </div>
         </div>
 
@@ -452,7 +501,7 @@
 
                 <div class="space-y-2">
                     <label class="block text-sm font-medium text-gray-400">Time</label>
-                    <input type="datetime-local" name="recorded_at" class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
+                    <input type="datetime-local" name="event_at" class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
                 </div>
 
                 <button type="submit" class="w-full bg-primary py-4 rounded-xl font-bold text-white shadow-lg mt-4 save-btn">Save Food</button>
@@ -508,7 +557,7 @@
 
                 <div class="space-y-2">
                     <label class="block text-sm font-medium text-gray-400">Time</label>
-                    <input type="datetime-local" name="recorded_at" class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
+                    <input type="datetime-local" name="event_at" class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
                 </div>
 
                 <button type="submit" class="w-full bg-primary py-4 rounded-xl font-bold text-white shadow-lg mt-4 save-btn">Save Drink</button>
@@ -572,7 +621,7 @@
 
                 <div class="space-y-2">
                     <label class="block text-sm font-medium text-gray-400">Time</label>
-                    <input type="datetime-local" name="recorded_at" class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
+                    <input type="datetime-local" name="event_at" class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
                 </div>
 
                 <button type="submit" class="w-full bg-primary py-4 rounded-xl font-bold text-white shadow-lg mt-4 save-btn">Save Entry</button>
@@ -648,7 +697,7 @@
 
                 <div class="space-y-2">
                     <label class="block text-sm font-medium text-gray-400">Time</label>
-                    <input type="datetime-local" name="recorded_at" class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
+                    <input type="datetime-local" name="event_at" class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
                 </div>
 
                 <button type="submit" class="w-full bg-primary py-4 rounded-xl font-bold text-white shadow-lg mt-4 save-btn">Save Log</button>
@@ -690,7 +739,7 @@
                     </div>
                     <div class="space-y-2">
                         <label class="block text-sm font-medium text-gray-400">Wake Up</label>
-                        <input type="datetime-local" name="recorded_at" required 
+                        <input type="datetime-local" name="event_at" required 
                             class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none text-sm">
                     </div>
                 </div>
@@ -784,7 +833,7 @@
 
                 <div class="space-y-2">
                     <label class="block text-sm font-medium text-gray-400">Time</label>
-                    <input type="datetime-local" name="recorded_at" class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
+                    <input type="datetime-local" name="event_at" class="time-input w-full bg-dark-800 border border-dark-700 rounded-xl p-3 text-white focus:border-primary outline-none">
                 </div>
 
                 <button type="submit" class="w-full bg-primary py-4 rounded-xl font-bold text-white shadow-lg mt-4 save-btn">Save Activity</button>
@@ -793,6 +842,6 @@
 
     </main>
 
-    <script type="module" src="js/app.js"></script>
+    <script type="module" src="js/app.js?v=1.20"></script>
 </body>
 </html>

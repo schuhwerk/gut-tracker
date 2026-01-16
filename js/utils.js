@@ -90,7 +90,7 @@ export const utils = {
 
     generateAIExport: (entries) => {
         // Sort Chronologically (Oldest First)
-        const sorted = [...entries].sort((a, b) => new Date(a.recorded_at) - new Date(b.recorded_at));
+        const sorted = [...entries].sort((a, b) => new Date(a.event_at) - new Date(b.event_at));
 
         let output = "GUT TRACKER EXPORT (FOR AI ANALYSIS)\n";
         output += "Format: [HH:MM] TYPE [Metrics]: Notes\n";
@@ -106,7 +106,7 @@ export const utils = {
         let currentDay = '';
 
         sorted.forEach(e => {
-            const localDate = utils.fromUTC(e.recorded_at);
+            const localDate = utils.fromUTC(e.event_at);
             const iso = utils.formatISO(localDate);
             const dateStr = iso.split('T')[0];
             const timeStr = iso.split('T')[1];

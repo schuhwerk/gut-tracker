@@ -51,7 +51,7 @@ function runSleepTest($t, $apiKey, $text, $expectedDuration) {
     }
     
     $duration = $body['data']['duration_hours'] ?? 0;
-    $wakeTime = $body['recorded_at'] ?? '';
+    $wakeTime = $body['event_at'] ?? '';
     $bedTime = $body['data']['bedtime'] ?? '';
     
     echo "AI Parsed -> Duration: {$duration}h\n";

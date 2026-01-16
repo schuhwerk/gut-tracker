@@ -3,10 +3,10 @@
  * Unified Test Runner for Gut Tracker
  * 
  * This script runs all PHP tests in the tests/ directory.
- * It assumes a local PHP server is running at http://localhost:8085
+ * It assumes a local PHP server is running at http://localhost:8087
  * 
  * To run a single test:
- * 1. Start server: php -S 127.0.0.1:8085 router.php
+ * 1. Start server: php -S 127.0.0.1:8087 router.php
  * 2. Run test:    php tests/test_api.php (or any other test file)
  */
 
@@ -14,8 +14,23 @@ $testFiles = glob(__DIR__ . '/test_*.php');
 $allPassed = true;
 
 $apiKey = $argv[1] ?? '';
-if (empty($apiKey) && file_exists(__DIR__ . '/api_key.txt')) {
-    $apiKey = trim(file_get_contents(__DIR__ . '/api_key.txt'));
+if (empty($apiKey)) {
+    if (file_exists(__DIR__ . '/api_key.json')) {
+        $content = trim(file_get_contents(__DIR__ . '/api_key.json'));
+        $json = json_decode($content, true);
+        if (is_array($json) && isset($json['api_key'])) {
+            $apiKey = $json['api_key'];
+        }
+    } elseif (file_exists(__DIR__ . '/api_key.txt')) {
+        $content = trim(file_get_contents(__DIR__ . '/api_key.txt'));
+        // Check if it's JSON (legacy support if someone puts JSON in txt)
+        $json = json_decode($content, true);
+        if (is_array($json) && isset($json['api_key'])) {
+            $apiKey = $json['api_key'];
+        } else {
+            $apiKey = $content;
+        }
+    }
 }
 
 echo "====================================\n";

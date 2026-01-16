@@ -1,36 +1,36 @@
 [
     {
-        "recorded_at": "2023-10-27 12:30:00",
+        "event_at": "2023-10-27 12:30:00",
         "type": "food",
         "data": { "notes": "Oatmeal with berries" }
     },
     {
-        "recorded_at": "2023-10-27 13:00:00",
+        "event_at": "2023-10-27 13:00:00",
         "type": "drink",
         "data": { "amount_liters": 0.5, "notes": "Green Tea" }
     },
     {
-        "recorded_at": "2023-10-27 14:00:00",
+        "event_at": "2023-10-27 14:00:00",
         "type": "stool",
         "data": { "bristol_score": 4, "notes": "Perfect" }
     },
     {
-        "recorded_at": "2023-10-27 22:00:00",
+        "event_at": "2023-10-27 22:00:00",
         "type": "sleep",
         "data": { "quality": 5, "duration_hours": 8.0, "bedtime": "2023-10-27 22:00:00" }
     },
     {
-        "recorded_at": "2023-10-28 08:00:00",
+        "event_at": "2023-10-28 08:00:00",
         "type": "feeling",
         "data": { "mood_score": 4, "notes": "Feeling energized" }
     },
     {
-        "recorded_at": "2023-10-28 08:30:00",
+        "event_at": "2023-10-28 08:30:00",
         "type": "symptom",
         "data": { "severity": 2, "notes": "Mild bloating" }
     },
     {
-        "recorded_at": "2023-10-28 09:00:00",
+        "event_at": "2023-10-28 09:00:00",
         "type": "activity",
         "data": { "duration_minutes": 45, "intensity": "Medium", "notes": "Morning Jog" }
     }

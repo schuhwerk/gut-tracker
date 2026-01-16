@@ -1,7 +1,7 @@
 uploads/*
 uploads
 .vscode/*
-tests/api_key.txt
+tests/api_key.json
 tests/cookie.txt
 gut_tracker.sqlite
 gut_tracker.wal

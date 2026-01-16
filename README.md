@@ -46,7 +46,7 @@ Works entirely in the browser using IndexedDB. No server setup required.
 
 ## Configuration
 
-*   **AI Features:** Enter your OpenAI API Key in the app's **Settings** menu.
+*   **AI Features:** Configure your AI Provider (OpenAI, DeepSeek, Custom) in the app's **Settings** menu.
 *   **HTTPS:** Required for Service Workers and PWA installation in production.
 *   **Customization:** Edit `manifest.json` to change the app name or theme colors.
 *   **PWA Icons:** The app expects `icon-192.png` and `icon-512.png` in the `/icons` directory.

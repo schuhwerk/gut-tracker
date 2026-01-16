@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gut-tracker-v15';
+const CACHE_NAME = 'gut-tracker-v25';
 const ASSETS_TO_CACHE = [
     './',
     'index.html',
@@ -54,7 +54,20 @@ self.addEventListener('fetch', (event) => {
 
     // 1. API & POST requests: Always Network Only
     if (url.pathname.includes('api.php') || event.request.method !== 'GET') {
-        event.respondWith(fetch(event.request));
+        event.respondWith(
+            (async () => {
+                try {
+                    return await fetch(event.request);
+                } catch (error) {
+                    console.log('[SW] Network request failed:', error);
+                    // Return 503 if network fails, preventing "Uncaught (in promise)" errors in console
+                    return new Response(JSON.stringify({ error: 'Network Error/Offline' }), {
+                        status: 503,
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                }
+            })()
+        );
         return;
     }
 

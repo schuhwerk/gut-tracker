@@ -22,37 +22,37 @@ echo "\n--- Adding test entries ---\n";
 $entries = [
     [
         'type' => 'food',
-        'recorded_at' => '2023-10-27 12:30:00',
+        'event_at' => '2023-10-27 12:30:00',
         'data' => ['notes' => 'Oatmeal with berries']
     ],
     [
         'type' => 'drink',
-        'recorded_at' => '2023-10-27 13:00:00',
+        'event_at' => '2023-10-27 13:00:00',
         'data' => ['amount_liters' => 0.5, 'notes' => 'Green Tea']
     ],
     [
         'type' => 'stool',
-        'recorded_at' => '2023-10-27 14:00:00',
+        'event_at' => '2023-10-27 14:00:00',
         'data' => ['bristol_score' => 4, 'notes' => 'Perfect']
     ],
     [
         'type' => 'sleep',
-        'recorded_at' => '2023-10-27 22:00:00',
+        'event_at' => '2023-10-27 22:00:00',
         'data' => ['quality' => 5, 'duration_hours' => 8.0]
     ],
     [
         'type' => 'feeling',
-        'recorded_at' => '2023-10-28 08:00:00',
+        'event_at' => '2023-10-28 08:00:00',
         'data' => ['mood_score' => 4, 'notes' => 'Feeling energized']
     ],
     [
         'type' => 'symptom',
-        'recorded_at' => '2023-10-28 08:30:00',
+        'event_at' => '2023-10-28 08:30:00',
         'data' => ['severity' => 2, 'notes' => 'Mild bloating']
     ],
     [
         'type' => 'activity',
-        'recorded_at' => '2023-10-28 09:00:00',
+        'event_at' => '2023-10-28 09:00:00',
         'data' => ['duration_minutes' => 45, 'intensity' => 'Medium', 'notes' => 'Morning Jog']
     ]
 ];
@@ -60,7 +60,7 @@ $entries = [
 foreach ($entries as $e) {
     $res = $t->request('POST', 'entry', [
         'type' => $e['type'],
-        'recorded_at' => $e['recorded_at'],
+        'event_at' => $e['event_at'],
         'data' => json_encode($e['data'])
     ], false);
     $t->assertStatus($res, 200);

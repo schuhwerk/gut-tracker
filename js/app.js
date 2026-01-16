@@ -13,6 +13,30 @@ const app = {
     isReviewing: false,
     lastSavedId: null,
 
+    AI_PROVIDERS: {
+        openai: { 
+            name: 'OpenAI (Default)', 
+            base_url: 'https://api.openai.com/v1', 
+            model: 'gpt-4o-mini',
+            fields_hidden: true 
+        },
+        deepseek: { 
+            name: 'DeepSeek', 
+            base_url: 'https://api.deepseek.com', 
+            model: 'deepseek-chat',
+            fields_hidden: false
+        },
+        custom: { 
+            name: 'Custom / Other', 
+            base_url: '', 
+            model: '',
+            fields_hidden: false
+        }
+    },
+
+    showLoading: (text) => UI.toggleLoading(true, text),
+    hideLoading: () => UI.toggleLoading(false),
+
     init: async () => {
         // PWA Registration
         if ('serviceWorker' in navigator) {
@@ -40,30 +64,12 @@ const app = {
                 if(el && d.version) el.innerText = 'v' + d.version;
             }).catch(() => {});
 
-        // Initialize Data Service (Auth Check)
+        // Initialize Data Service
         await DataService.init();
 
         // Routing & Auth
         window.addEventListener('route-changed', (e) => app.onRouteChanged(e.detail.view));
         
-        // Initial Route Decision
-        const currentHash = window.location.hash.substring(1);
-        
-        // If we are in Hybrid mode but not authenticated (checked inside DataService init implicitly via api key check? No, DataService.init just checks mode)
-        // We need a proper Auth check.
-        // If LOCAL mode, we assume "logged in" if we can read DB.
-        
-        if (DataService.mode === 'HYBRID') {
-             // We need to know if we are logged in. 
-             // DataService.init already tried check_auth.
-             // If check_auth failed, we might be logged out.
-             // But DataService.init sets mode=LOCAL if check_auth fails due to connection.
-             // If check_auth returns {authenticated: false}, mode is still HYBRID.
-             
-             // Let's refine DataService init return or check state.
-             // For now, let's just try to load entries. If 401, redirect.
-        }
-
         Router.init();
 
         // Setup UI Listeners
@@ -71,29 +77,38 @@ const app = {
         app.setupForms();
         app.initMagicButton();
         
-        // Check if we need to login
+        // Check if we need to login or redirect
+        const currentHash = window.location.hash.substring(1);
+        
         if (DataService.mode === 'HYBRID') {
             try {
                 const res = await fetch('api.php?endpoint=check_auth');
                 const auth = await res.json();
                 if (auth.authenticated) {
                     DataService.isAuthenticated = true;
-                    // Check for unsynced local entries
-                    await app.checkPendingUploads();
-                    
-                    if (!currentHash || currentHash === 'login') await app.checkDraftsAndNavigate();
+                    // Note: check_auth might return new config values, but DataService.init already handled it?
+                    // Actually DataService.init calls check_auth. This second call is redundant if init did it.
+                    // DataService.init handles isAuthenticated state.
+                    // We just need to check if we are authenticated to navigate.
+                } 
+                
+                if (DataService.isAuthenticated) {
+                     await app.checkPendingUploads();
+                     if (!currentHash || currentHash === 'login') await app.checkDraftsAndNavigate();
                 } else {
-                    DataService.isAuthenticated = false;
-                    if (!currentHash) Router.navigate('dashboard');
+                     if (!currentHash) Router.navigate('dashboard');
                 }
             } catch (e) {
-                if (DataService.mode === 'LOCAL' && (!currentHash || currentHash === 'login')) {
-                    await app.checkDraftsAndNavigate();
-                }
+                // If checking auth fails (network), fallback logic handled by DataService.init setting mode=LOCAL?
+                if (!currentHash) Router.navigate('dashboard');
             }
         } else {
             if (!currentHash || currentHash === 'login') await app.checkDraftsAndNavigate();
         }
+    },
+
+    navigate: (viewId) => {
+        Router.navigate(viewId);
     },
 
     checkDraftsAndNavigate: async () => {
@@ -104,41 +119,63 @@ const app = {
             Router.navigate('dashboard');
         }
     },
+    
+    // AI Settings Logic
+    toggleAiFields: () => {
+        const provider = document.getElementById('ai-provider').value;
+        const config = app.AI_PROVIDERS[provider] || app.AI_PROVIDERS['custom'];
+        
+        const advFields = document.getElementById('ai-advanced-fields');
+        const baseUrlInput = document.getElementById('ai-base-url');
+        const modelInput = document.getElementById('ai-model');
+
+        // Always set the defaults if switching to a specific provider config
+        if (provider !== 'custom') {
+            baseUrlInput.value = config.base_url;
+            modelInput.value = config.model;
+        }
+
+        if (config.fields_hidden) {
+            advFields.classList.add('hidden');
+        } else {
+            advFields.classList.remove('hidden');
+            baseUrlInput.placeholder = config.base_url || 'https://api.openai.com/v1';
+            modelInput.placeholder = config.model || 'gpt-4o-mini';
+        }
+    },
+
+    saveLocalSettings: async () => {
+         const provider = document.getElementById('ai-provider').value;
+         const apiKey = document.getElementById('api-key').value.trim();
+         const debugMode = document.getElementById('debug-mode').checked;
+         
+         const config = {
+             provider: provider,
+             api_key: apiKey,
+             base_url: document.getElementById('ai-base-url').value.trim(),
+             model: document.getElementById('ai-model').value.trim()
+         };
+
+         try {
+             if (apiKey) {
+                 app.showLoading('Verifying API Key...');
+                 await DataService.testApiKey(config);
+                 app.hideLoading();
+             }
+             
+             await DataService.saveSettings(config, debugMode);
+             alert('Settings saved and verified.');
+             Router.navigate('settings');
+         } catch (e) {
+             app.hideLoading();
+             alert('Verification failed: ' + e.message + '\n\nSettings NOT saved.');
+         }
+    },
 
     checkPendingUploads: async () => {
-        // Only run if we are authenticated
         if (!DataService.isAuthenticated) return;
-        
         const unsynced = await DataService.getPendingUploads();
-        if (unsynced && unsynced.length > 0) {
-
-            return; // @todo this needs more work and needs to be implemented properly. 
-
-            // Filter out entries that might already belong to this user if we could detect that easily,
-            // but for now we assume all unsynced local entries are candidates.
-            // We should show a nice summary.
-            const stats = unsynced.reduce((acc, curr) => {
-                acc[curr.type] = (acc[curr.type] || 0) + 1;
-                return acc;
-            }, {});
-            
-            const summary = Object.entries(stats)
-                .map(([type, count]) => `${count} ${type.charAt(0).toUpperCase() + type.slice(1)}`)
-                .join(', ');
-
-            const msg = `Found ${unsynced.length} local entries that are not in your account:\n${summary}\n\nDo you want to upload them now?`;
-            if (confirm(msg)) {
-                UI.toggleLoading(true, 'Syncing local entries...');
-                try {
-                    const count = await DataService.uploadEntries(unsynced);
-                    alert(`Successfully synced ${count} entries.`);
-                } catch (e) {
-                    alert('Sync had errors: ' + e.message);
-                } finally {
-                    UI.toggleLoading(false);
-                }
-            }
-        }
+        // Logic for sync prompt (currently disabled/placeholder)
     },
 
     onRouteChanged: async (viewId) => {
@@ -147,17 +184,7 @@ const app = {
             try {
                 const entry = await DataService.getEntry(id);
                 if (entry) {
-                    // Show the correct form view without resolving route hash (since hash is #edit-ID)
-                    // We use Router.showView but need to bypass the 'edit-' check? 
-                    // No, Router.showView('add-food') works fine.
-                    // But it dispatches 'route-changed' -> 'add-food'.
-                    // So we trigger 'prepareAddView' which resets form.
-                    // Then we populate.
-                    
                     Router.showView(`add-${entry.type}`); 
-                    // Note: showView dispatches event synchronously, so prepareAddView runs NOW.
-                    
-                    // Now populate
                     app.populateEntry(entry);
                 } else {
                     alert('Entry not found');
@@ -172,17 +199,11 @@ const app = {
 
         if (viewId === 'dashboard') {
             app.loadEntries();
-            
-            // Welcome Box Logic
             const welcomeBox = document.getElementById('welcome-box');
             if (welcomeBox && !localStorage.getItem('welcomeBoxDismissed')) {
                 welcomeBox.classList.remove('hidden');
             }
-
-            // Status Box Logic (Offline or Unauth)
             app.updateStatusBox();
-            
-            // Beta Warning Logic
             app.checkBetaWarning();
         } else if (viewId === 'stats') {
             app.loadStats();
@@ -193,29 +214,66 @@ const app = {
         } else if (viewId === 'magic-input') {
              app.renderMagicList();
         } else if (viewId === 'settings') {
-            document.getElementById('api-key').value = DataService.apiKey || '';
+            // Populate Settings
+            const config = DataService.aiConfig || {};
+            
+            // Handle legacy format (if config is just string or null)
+            const provider = config.provider || (config.base_url ? 'custom' : 'openai');
+            
+            // Generate Options
+            const select = document.getElementById('ai-provider');
+            select.innerHTML = '';
+            Object.keys(app.AI_PROVIDERS).forEach(key => {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.text = app.AI_PROVIDERS[key].name;
+                select.appendChild(opt);
+            });
+            select.value = provider;
+
+            document.getElementById('api-key').value = config.api_key || (typeof config === 'string' ? config : '') || '';
+            document.getElementById('ai-base-url').value = config.base_url || '';
+            document.getElementById('ai-model').value = config.model || '';
+            document.getElementById('debug-mode').checked = DataService.debugMode || false;
+            
+            app.toggleAiFields();
+
             const logoutBtn = document.getElementById('btn-logout');
             const loginBtn = document.getElementById('btn-login-settings');
             const profileSync = document.getElementById('profile-sync-section');
+            const logsBtn = document.getElementById('btn-show-logs');
+            const userInfoBox = document.getElementById('user-info-settings');
+            const usernameSpan = document.getElementById('settings-username');
+
             if (DataService.isAuthenticated) {
                 if(logoutBtn) logoutBtn.classList.remove('hidden');
                 if(loginBtn) loginBtn.classList.add('hidden');
                 if(profileSync) profileSync.classList.remove('hidden');
+                if (DataService.debugMode && logsBtn) logsBtn.classList.remove('hidden');
+                
+                try {
+                    const user = await DataService.getCurrentUser();
+                    if(user && usernameSpan) usernameSpan.innerText = user.username;
+                    if(userInfoBox) userInfoBox.classList.remove('hidden');
+                } catch(e) { }
+
             } else {
                 if(logoutBtn) logoutBtn.classList.add('hidden');
                 if(loginBtn) loginBtn.classList.remove('hidden');
                 if(profileSync) profileSync.classList.add('hidden');
+                if(logsBtn) logsBtn.classList.add('hidden');
+                if(userInfoBox) userInfoBox.classList.add('hidden');
             }
         }
     },
-
+    
+    // ... rest of methods unchanged ... 
     logout: async () => {
         if (!confirm('Logout?')) return;
         try {
             await fetch('api.php?endpoint=logout', { method: 'POST' });
             DataService.isAuthenticated = false;
-            // Optionally clear some local state, but keep data in IDB
-            window.location.reload(); // Simplest way to reset app state
+            window.location.reload(); 
         } catch (e) {
             alert('Logout failed');
         }
@@ -230,16 +288,15 @@ const app = {
             entries = entries.filter(e => !app.pendingDeletions.has(e.id));
         }
         
-        // Hydration & Reminder Logic
         const now = new Date();
-        const todayISO = utils.formatISO(now).split('T')[0]; // Local YYYY-MM-DD
+        const todayISO = utils.formatISO(now).split('T')[0]; 
         
         let waterToday = 0;
         let hasFeelingLog = false;
 
         entries.forEach(e => {
-            const localDate = utils.fromUTC(e.recorded_at);
-            const dateStr = utils.formatISO(localDate).split('T')[0]; // Local YYYY-MM-DD
+            const localDate = utils.fromUTC(e.event_at);
+            const dateStr = utils.formatISO(localDate).split('T')[0];
             
             if (e.type === 'drink' && dateStr === todayISO) {
                 waterToday += parseFloat(e.data.amount_liters || 0);
@@ -253,7 +310,6 @@ const app = {
 
         const dot = document.getElementById('feeling-btn-dot');
         if (dot) {
-             // Only show reminder if past 15:00
              if (now.getHours() >= 15 && !hasFeelingLog) dot.classList.remove('hidden');
              else dot.classList.add('hidden');
         }
@@ -261,7 +317,6 @@ const app = {
         UI.renderTimeline(entries, 'timeline', app.lastSavedId);
         if (app.lastSavedId) app.lastSavedId = null;
         
-        // Attach click handlers for editing
         document.querySelectorAll('#timeline > div').forEach(el => {
             el.onclick = () => {
                 const id = el.dataset.id;
@@ -282,19 +337,14 @@ const app = {
     },
 
     cloneEntry: async (originalEntry) => {
-        
         try {
-            // Create clone with current time
             const newEntry = {
                 ...originalEntry,
                 id: null,
-                recorded_at: utils.toUTC(new Date()),
+                event_at: utils.toUTC(new Date()),
                 created_at: utils.toUTC(new Date()),
-                synced: 0 // Ensure it's treated as new
+                synced: 0 
             };
-            
-            // If original was a draft, make sure new one isn't (or is?)
-            // Usually we want to verify real entries.
             if (newEntry.data && newEntry.data.is_draft) {
                 delete newEntry.data.is_draft;
             }
@@ -302,7 +352,7 @@ const app = {
             const result = await DataService.saveEntry(newEntry);
             
             app.lastSavedId = result.id;
-            app.loadEntries(); // Refresh
+            app.loadEntries(); 
             
             app.showUndoToast('Entry re-added', async () => {
                 await DataService.deleteEntry(result.id);
@@ -315,7 +365,6 @@ const app = {
     },
 
     prepareAddView: (viewId) => {
-        // Handle legacy symptom redirect if needed
         let type = viewId.replace('add-', '');
         if (type === 'symptom') type = 'feeling';
         
@@ -328,7 +377,7 @@ const app = {
         const deleteBtn = document.querySelector(`#view-${viewId} .btn-delete`);
         if (deleteBtn) deleteBtn.classList.add('hidden');
         
-        const timeInput = document.querySelector(`#${formId} input[name="recorded_at"]`);
+        const timeInput = document.querySelector(`#${formId} input[name="event_at"]`);
         if (timeInput) timeInput.value = utils.formatISO();
         
         if (viewId === 'add-sleep') {
@@ -339,7 +388,6 @@ const app = {
         const btn = document.querySelector(`#${formId} .save-btn`);
         if (btn) btn.textContent = 'Save ' + type.charAt(0).toUpperCase() + type.slice(1);
 
-        // Reset Type Selector
         const typeSelector = document.querySelector(`#${formId} .type-switcher`);
         if (typeSelector) typeSelector.value = type;
     },
@@ -348,7 +396,6 @@ const app = {
         if (entry.id) {
             Router.navigate(`edit-${entry.id}`);
         } else {
-            // Fallback (rare)
             Router.navigate(`add-${entry.type}`);
             setTimeout(() => app.populateEntry(entry), 50);
         }
@@ -362,24 +409,21 @@ const app = {
 
         const formData = new FormData(currentForm);
         const id = formData.get('id');
-        const recorded_at_local = formData.get('recorded_at');
+        const event_at_local = formData.get('event_at');
         const notes = formData.get('notes');
         
         const entry = {
             id: id ? Number(id) : null,
             type: newType,
-            // populateEntry expects UTC. input is Local.
-            recorded_at: recorded_at_local ? utils.toUTC(recorded_at_local) : new Date().toISOString().replace('T', ' ').substring(0, 19),
+            event_at: event_at_local ? utils.toUTC(event_at_local) : new Date().toISOString().replace('T', ' ').substring(0, 19),
             data: { notes: notes }
         };
 
-        // Preserve Image Path from Preview if exists
         const imgPreview = currentForm.querySelector('.current-image-preview img');
         if (imgPreview) {
             entry.data.image_path = imgPreview.getAttribute('src');
         }
 
-        // Switch View
         Router.showView(`add-${newType}`);
         app.prepareAddView(`add-${newType}`);
         app.populateEntry(entry);
@@ -387,15 +431,12 @@ const app = {
 
     populateEntry: (entry) => {
         let type = entry.type;
-        // Map legacy symptom to feeling
         if (type === 'symptom') type = 'feeling';
 
         const viewId = `add-${type}`;
         const formId = `form-${type}`;
         
-        // Ensure we are on the right view (in case we came from legacy link)
         if (entry.type === 'symptom') {
-             // UI might have opened 'add-symptom' but Router should handle mapping or we ensure view is correct
              document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
              document.getElementById('view-' + viewId)?.classList.remove('hidden');
         }
@@ -403,7 +444,6 @@ const app = {
         const form = document.getElementById(formId);
         if (!form) return;
 
-        // Set Type Selector
         const typeSelector = form.querySelector('.type-switcher');
         if (typeSelector) typeSelector.value = type;
         
@@ -421,7 +461,6 @@ const app = {
         if (title) title.innerText = `Edit ${type.charAt(0).toUpperCase() + type.slice(1)}`;
         
         const btn = form.querySelector('.save-btn');
-        // If it's a draft, say "Add" instead of "Update", even though it technically has an ID.
         if (btn) {
             if (entry.data && entry.data.is_draft) {
                 btn.textContent = 'Add ' + type.charAt(0).toUpperCase() + type.slice(1);
@@ -430,10 +469,9 @@ const app = {
             }
         }
 
-        // Populate fields
-        const timeInput = form.querySelector('input[name="recorded_at"]');
+        const timeInput = form.querySelector('input[name="event_at"]');
         if (timeInput) {
-            timeInput.value = utils.toLocalInput(entry.recorded_at);
+            timeInput.value = utils.toLocalInput(entry.event_at);
         }
         
         if (entry.data.notes) {
@@ -441,11 +479,9 @@ const app = {
             if(el) el.value = entry.data.notes;
         }
 
-        // Type specific
         if (type === 'stool') {
             const s = entry.data.bristol_score;
             form.querySelector('input[name="bristol_score"]').value = s || 4;
-            // Update selector UI
             form.querySelectorAll('.bristol-selector button').forEach(b => b.classList.remove('selected'));
             const b = form.querySelector(`.bristol-selector button[data-val="${s}"]`);
             if(b) b.classList.add('selected');
@@ -459,7 +495,6 @@ const app = {
                 const output = input.parentElement.querySelector('output');
                 if (output) output.value = val;
             }
-            // Notes field might be feeling-notes or notes
             if (entry.data.notes) {
                  const el = form.querySelector('textarea[name="notes"]') || form.querySelector('#feeling-notes');
                  if(el) el.value = entry.data.notes;
@@ -480,7 +515,6 @@ const app = {
             const val = entry.data.intensity;
             form.querySelector('input[name="intensity"]').value = val || '';
             
-            // Trigger click on correct button
             if (val) {
                 const b = form.querySelector(`.intensity-selector button[data-val="${val}"]`);
                 if(b) b.click();
@@ -491,7 +525,6 @@ const app = {
             }
         }
 
-        // Show image if assigned (any type)
         if (entry.data.image_path) {
             const prev = form.querySelector('.current-image-preview') || document.querySelector(`#view-${viewId} .current-image-preview`);
             if (prev) {
@@ -520,7 +553,6 @@ const app = {
         const btns = form.querySelectorAll('.bristol-selector button');
         if(btns) btns.forEach(b => b.classList.remove('selected'));
         
-        // Reset intensity buttons
         const iBtn = form.querySelectorAll('.intensity-selector button');
         if(iBtn) {
             iBtn.forEach(b => {
@@ -542,7 +574,7 @@ const app = {
             let entry = {
                 id: formData.get('id') ? Number(formData.get('id')) : null,
                 type: type,
-                recorded_at: utils.toUTC(formData.get('recorded_at')),
+                event_at: utils.toUTC(formData.get('event_at')),
                 data: {},
                 image_blob: null
             };
@@ -551,7 +583,6 @@ const app = {
                 try {
                     const existing = await DataService.getEntry(entry.id);
                     if (existing) {
-                        // Merge existing properties (preserve created_at, user_id, synced, etc.)
                         entry = { 
                             ...existing, 
                             ...entry, 
@@ -561,7 +592,6 @@ const app = {
                 } catch(e) { console.warn('Failed to fetch existing for merge', e); }
             }
             
-            // Extract data
             if (type === 'stool') {
                 entry.data.bristol_score = formData.get('bristol_score');
                 entry.data.notes = formData.get('notes');
@@ -569,9 +599,7 @@ const app = {
                 const bedLocal = formData.get('bedtime');
                 entry.data.bedtime = utils.toUTC(bedLocal);
                 entry.data.quality = formData.get('quality');
-                
-                // Calculate duration using Local times (easier diff)
-                const wakeDate = new Date(formData.get('recorded_at'));
+                const wakeDate = new Date(formData.get('event_at'));
                 const bedDate = new Date(bedLocal);
                 entry.data.duration_hours = (wakeDate > bedDate) ? ((wakeDate - bedDate) / 3600000).toFixed(1) : 0;
             } else if (type === 'feeling') {
@@ -584,7 +612,7 @@ const app = {
                  entry.data.notes = formData.get('notes');
                  const fileInput = form.querySelector('input[name="image"]');
                  if (fileInput && fileInput.files[0]) {
-                     entry.image_blob = fileInput.files[0]; // Passed to DataService
+                     entry.image_blob = fileInput.files[0];
                  }
             } else if (type === 'activity') {
                 entry.data.notes = formData.get('notes');
@@ -592,7 +620,6 @@ const app = {
                 entry.data.intensity = formData.get('intensity');
             }
 
-            // Handle Image Removal
             if (form.dataset.removeImage === '1') {
                 entry.data.image_path = null;
                 entry.image_blob = null;
@@ -606,7 +633,6 @@ const app = {
                 
                 if (app.isReviewing) {
                     app.isReviewing = false;
-                    // Check if we still have drafts
                     const drafts = await DataService.getDrafts();
                     if (drafts.length > 0) Router.navigate('magic-input');
                     else Router.navigate('dashboard');
@@ -626,7 +652,6 @@ const app = {
              if (form) form.addEventListener('submit', (e) => handleSubmit(e, type));
         });
         
-        // Login & Create User
         const loginForm = document.getElementById('login-form');
         if(loginForm) {
             loginForm.addEventListener('submit', async (e) => {
@@ -636,7 +661,6 @@ const app = {
                     const res = await fetch('api.php?endpoint=login', { method: 'POST', body: fd });
                     const data = await res.json();
                     if(data.user_id) {
-                         // Force Hybrid check
                          await DataService.init(); 
                          Router.navigate('dashboard');
                     } else {
@@ -664,7 +688,6 @@ const app = {
     },
 
     setupListeners: () => {
-         // Bristol Selector
          document.querySelectorAll('.bristol-selector button').forEach(btn => {
              btn.addEventListener('click', (e) => {
                  const target = e.target.closest('button');
@@ -675,20 +698,17 @@ const app = {
              });
          });
          
-         // Activity Intensity Selector
          document.querySelectorAll('.intensity-selector button').forEach(btn => {
              btn.addEventListener('click', (e) => {
                  const target = e.target.closest('button');
                  const p = target.parentElement;
                  p.querySelectorAll('button').forEach(b => b.classList.remove('bg-emerald-600', 'bg-dark-800', 'border-emerald-500'));
-                 // Reset all to default style
                  p.querySelectorAll('button').forEach(b => {
                      b.classList.add('bg-dark-800');
                      b.classList.remove('bg-emerald-600', 'text-white');
                      b.querySelector('.text-gray-400')?.classList.remove('text-white');
                  });
                  
-                 // Apply active style
                  target.classList.remove('bg-dark-800');
                  target.classList.add('bg-emerald-600', 'text-white');
                  target.querySelector('.font-bold')?.classList.remove('text-gray-400');
@@ -698,7 +718,6 @@ const app = {
              });
          });
          
-         // Global Keys
          document.addEventListener('keydown', (e) => {
             if (e.ctrlKey && e.key === 'Enter') {
                 const form = document.activeElement?.closest('form');
@@ -706,11 +725,9 @@ const app = {
             }
          });
          
-         // Helper function for global access (for onclicks in HTML)
          window.app = app;
     },
 
-    // Magic Features
     removeImage: (btn) => {
         const form = btn.closest('form');
         const prev = btn.closest('.current-image-preview');
@@ -737,7 +754,6 @@ const app = {
         try {
             const base64 = await utils.compressImage(input.files[0]);
             
-            // Show preview immediately
             const form = input.closest('form');
             const imgPrev = form.querySelector('.current-image-preview');
             if (imgPrev) {
@@ -791,20 +807,12 @@ const app = {
             }
         }
 
-        // Attach image to all results if provided
         if (imageBlob) {
             results.forEach(r => {
                 r.image_blob = imageBlob;
             });
         }
 
-        // Single result auto-save logic is good, but user wants editing flexibility.
-        // If we make everything a draft, the user can choose to edit or ignore.
-        // However, auto-saving exact matches is a nice feature.
-        // We will stick to: 
-        // 1. Single result -> Save normally (unless user changed preference, but no pref setting exists).
-        // 2. Multiple -> Save as drafts and show list.
-        
         if (results.length === 1) {
             try {
                 UI.toggleLoading(true, 'Saving entry...');
@@ -844,7 +852,6 @@ const app = {
         container.innerHTML = '';
         
         if (app.pendingDrafts.length === 0) {
-            // If we are on magic-input view but no drafts, redirect to dashboard
             container.innerHTML = '<p class="text-center text-gray-500 py-4">No pending items.</p>';
             Router.navigate('dashboard');
             return;
@@ -854,7 +861,6 @@ const app = {
             const div = document.createElement('div');
             div.className = 'bg-dark-800 rounded-xl p-4 shadow-lg border border-dark-700 relative overflow-hidden mb-4';
             
-            // Logic adapted from UI.renderTimeline
             let icon = '', title = '', content = '', imageHtml = ''; 
             
             if (entry.data && entry.data.image_path) {
@@ -895,7 +901,7 @@ const app = {
                            <button onclick="app.cancelMagicEntry(${index})" class="text-gray-500 hover:text-red-400 p-1">✕</button>
                        </div>
                        <div class="text-sm text-gray-300">${content}</div>
-                       <div class="text-xs text-gray-500 mt-2">Recorded at: ${utils.fromUTC(entry.recorded_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                       <div class="text-xs text-gray-500 mt-2">Recorded at: ${utils.fromUTC(entry.event_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
                    </div>
                </div>
                <div class="grid grid-cols-2 gap-2">
@@ -916,30 +922,9 @@ const app = {
     saveMagicEntry: async (index) => {
         const entry = app.pendingDrafts[index];
         try {
-            // Remove is_draft and save
             if(entry.data) delete entry.data.is_draft;
             const result = await DataService.saveEntry(entry);
             app.lastSavedId = result.id;
-            
-            // If saving magically, we might want to go to dashboard or stay?
-            // "Add" usually means "Done".
-            // Implementation: Remove from list. If list empty, go dashboard.
-            // But current impl calls app.renderMagicList().
-            // If we want to highlight, we should probably go to dashboard for that item?
-            // The user clicked "Add" on a magic item.
-            // If we stay on magic list, highlighting doesn't happen on dashboard.
-            // If we navigate to dashboard, we see it highlighted.
-            
-            // Let's modify behavior: Remove from draft list locally, check if more exist.
-            
-            // But wait, renderMagicList re-fetches drafts.
-            // The saved entry is no longer a draft.
-            // So if we call renderMagicList(), it acts correctly for remaining drafts.
-            // But if user wants to see the added item, they might expect to go to dashboard?
-            // The "saveMagicEntry" function currently just refreshes the list.
-            // Let's leave it as is, but if we navigate to dashboard later, `lastSavedId` will be set to the LAST saved one.
-            // If user adds 3 items, the last one will be highlighted if they go to dashboard.
-            // That's acceptable.
             
             app.renderMagicList();
         } catch(e) { alert(e.message); }
@@ -961,7 +946,7 @@ const app = {
         }, 5000);
 
         app.showUndoToast('Draft discarded', () => {
-             if(committed) return;
+             if(committed) return; 
              clearTimeout(timeoutId);
              app.pendingDeletions.delete(id);
              app.renderMagicList();
@@ -1016,7 +1001,6 @@ const app = {
             return;
         }
 
-        // Configure Content
         if (type === 'OFFLINE') {
             titleEl.innerHTML = '<span>📡</span> Offline Mode';
             msgEl.innerHTML = 'Server unreachable. Data is saved <strong class="text-orange-300">locally</strong> and will NOT sync until connection is restored.';
@@ -1046,7 +1030,6 @@ const app = {
             if(box) box.classList.add('hidden');
             app.updateAlertIcon();
             
-            // Blink icon
             const icon = document.getElementById('btn-status-icon');
             if(icon) {
                 icon.classList.add('animate-pulse');
@@ -1064,18 +1047,16 @@ const app = {
         const type = app.getStatusType();
         const statusDismissed = type ? localStorage.getItem(`statusDismissed_${type}`) === 'true' : false;
 
-        // Show icon if ANY relevant alert is dismissed
         if (betaDismissed || (type && statusDismissed)) {
             icon.classList.remove('hidden');
             
-            // Trigger animation if not already settled
             if (!icon.dataset.settled) {
                 icon.classList.add('text-orange-400', 'animate-pulse');
                 icon.dataset.settled = "true";
                 
                 setTimeout(() => {
                     icon.classList.remove('text-orange-400', 'animate-pulse');
-                }, 3000); // Fade out after 3s
+                }, 3000); 
             }
         } else {
             icon.classList.add('hidden');
@@ -1085,18 +1066,15 @@ const app = {
     },
 
     showAllAlerts: () => {
-        // Clear dismiss flags
         localStorage.removeItem('betaWarningDismissed');
         const type = app.getStatusType();
         if(type) localStorage.removeItem(`statusDismissed_${type}`);
         
-        // Update UI
         app.checkBetaWarning();
         app.updateStatusBox();
     },
 
     showStatusBox: () => {
-        // Legacy/Fallback - redirects to showAll now
         app.showAllAlerts();
     },
 
@@ -1106,10 +1084,9 @@ const app = {
          if(!idVal) return;
          const id = Number(idVal);
 
-         // Optimistic UI Update
          app.pendingDeletions.add(id);
          app.resetForm(formId);
-         Router.navigate('dashboard'); // This will trigger loadEntries, which filters out the ID
+         Router.navigate('dashboard'); 
 
          let committed = false;
          const timeoutId = setTimeout(async () => {
@@ -1119,7 +1096,7 @@ const app = {
          }, 5000);
 
          app.showUndoToast('Entry deleted', () => {
-             if (committed) return; // Too late
+             if (committed) return; 
              clearTimeout(timeoutId);
              app.pendingDeletions.delete(id);
              if (app.pendingDeletions.size === 0 && (window.location.hash === '#dashboard' || !window.location.hash)) {
@@ -1156,18 +1133,38 @@ const app = {
     },
 
     syncKeyToProfile: async () => {
+        const provider = document.getElementById('ai-provider').value;
         const key = document.getElementById('api-key').value.trim();
         if(!key) return alert('Enter a key first');
+        
+        const config = {
+            provider: provider,
+            api_key: key,
+            base_url: document.getElementById('ai-base-url').value.trim(),
+            model: document.getElementById('ai-model').value.trim()
+        };
+
         try {
+            app.showLoading('Verifying Key...');
+            await DataService.testApiKey(config);
+            app.hideLoading();
+
             const res = await fetch('api.php?endpoint=update_settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ api_key: key })
+                body: JSON.stringify({ 
+                    api_key: key,
+                    ai_config: config,
+                    debug_mode: document.getElementById('debug-mode').checked ? 1 : 0
+                })
             });
             const data = await res.json();
             if(data.error) throw new Error(data.error);
-            alert('Key synced to profile');
-        } catch(e) { alert('Sync failed: ' + e.message); }
+            alert('Key verified and synced to profile');
+        } catch(e) { 
+            app.hideLoading();
+            alert('Verification or Sync failed: ' + e.message); 
+        }
     },
 
     removeKeyFromProfile: async () => {
@@ -1196,7 +1193,6 @@ const app = {
     },
 
     exportDataForAI: async () => {
-        // Fetch all entries (limit 5000 should cover most users for now)
         const entries = await DataService.getEntries(5000);
         
         const output = utils.generateAIExport(entries);
@@ -1224,12 +1220,6 @@ const app = {
         } catch (e) {
             alert('Delete failed: ' + e.message);
         }
-    },
-
-    saveLocalSettings: async () => {
-         const key = document.getElementById('api-key').value.trim();
-         await DataService.setApiKey(key);
-         alert('Saved locally');
     },
 
     initMagicButton: () => {
@@ -1321,25 +1311,53 @@ const app = {
          alert('Use the magic voice button for now!');
     },
 
-    loadStats: async () => {
-         const entries = await DataService.getEntries(300);
-         UI.renderStats(entries, 'stats-content');
-    },
+    showLogs: async () => {
+        const container = document.getElementById('logs-content');
+        container.innerHTML = '<p class="text-center text-gray-500">Loading...</p>';
+        app.navigate('logs');
+        
+        try {
+            const data = await DataService.getLogs();
+            if (!data.logs || data.logs.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-500">No logs found.</p>';
+                return;
+            }
+            
+            container.innerHTML = data.logs.map(log => {
+                let details = '';
+                try {
+                    const ctx = JSON.parse(log.context);
+                    if (ctx.prompt && ctx.response) {
+                        details = `
+                            <div class="mt-2 text-xs bg-black/30 p-2 rounded border border-white/10 overflow-x-auto whitespace-pre-wrap font-mono">
+                                <strong class="text-indigo-400">Prompt:</strong>\n${ctx.prompt}\n\n<strong class="text-emerald-400">Response:</strong>\n${ctx.response}
+                            </div>
+                        `;
+                    } else {
+                        details = `<pre class="mt-2 text-xs bg-black/30 p-2 rounded overflow-x-auto">${JSON.stringify(ctx, null, 2)}</pre>`;
+                    }
+                } catch (e) {
+                    details = `<div class="mt-2 text-xs">${log.context || ''}</div>`;
+                }
 
-    loadDiagram: async () => {
-         // Fetch enough entries for 30 days. 
-         // Strategy: Get last ~300 entries and let UI filter by date, 
-         // or if we had a date-range API, use that.
-         // DataService.getEntries defaults to limit 50, so we need more.
-         // Since we don't have date filtering in getEntries(limit) in IDB/API explicitly exposed here simply,
-         // we fetch a larger chunk.
-         const entries = await DataService.getEntries(300);
-         UI.renderCharts(entries);
-    },
-
-    navigate: (viewId) => {
-        Router.navigate(viewId);
+                return `
+                    <div class="bg-dark-800 p-4 rounded-xl border border-dark-700">
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="text-xs font-bold uppercase text-gray-500">${log.type}</span>
+                            <span class="text-[10px] text-gray-600">${log.created_at}</span>
+                        </div>
+                        <div class="text-sm text-white font-medium">${log.message}</div>
+                        ${details}
+                    </div>
+                `;
+            }).join('');
+        } catch (e) {
+            container.innerHTML = `<p class="text-center text-red-400">Error loading logs: ${e.message}</p>`;
+        }
     }
 };
 
-document.addEventListener('DOMContentLoaded', app.init);
+// Initialize App
+document.addEventListener('DOMContentLoaded', () => {
+    app.init();
+});

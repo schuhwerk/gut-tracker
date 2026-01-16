@@ -31,8 +31,9 @@ fi
 sed -i "s/<span id=\"app-version\" class=\"text-\[10px\] text-gray-600 font-mono\">v.*<\/span>/<span id=\"app-version\" class=\"text-[10px] text-gray-600 font-mono\">v$NEW_VERSION<\/span>/" index.html
 echo "- Updated visual version in index.html"
 
-# 4. Update index.html CSS Asset Version
+# 4. Update index.html CSS and JS Asset Version
 sed -i "s/href=\"style.css?v=.*\"/href=\"style.css?v=$NEW_VERSION\"/" index.html
-echo "- Updated asset query string in index.html"
+sed -i "s/src=\"js\/app.js?v=.*\"/src=\"js\/app.js?v=$NEW_VERSION\"/" index.html
+echo "- Updated asset query strings in index.html"
 
 echo "✅ Update complete!"

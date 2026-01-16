@@ -42,7 +42,7 @@ $t->assert(file_exists($serverPath), "File should exist: $serverPath");
 $updateData = [
     'id' => $id,
     'type' => 'food',
-    'recorded_at' => gmdate('Y-m-d H:i:s'),
+    'event_at' => gmdate('Y-m-d H:i:s'),
     'data' => json_encode(['notes' => 'Image Removed', 'image_path' => null])
 ];
 

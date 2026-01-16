@@ -1,5 +1,43 @@
 const DB_NAME = 'GutTrackerDB';
-const DB_VERSION = 3;
+const DB_VERSION = 5;
+
+// Schema definitions to ensure local IDB matches Server DB structure
+const SCHEMAS = {
+    users: {
+        id: null,
+        username: '',
+        password_hash: '', // Added for server similarity
+        api_key: null,
+        debug_mode: 0,
+        ai_config: null
+        // created_at is automatic on server, handled locally if needed
+    },
+    entries: {
+        id: null,
+        user_id: null,
+        type: '',
+        event_at: '',
+        data: null, // Server uses TEXT (JSON), we keep object locally but sync converts
+        created_at: ''
+    }
+};
+
+const enforceSchema = (data, schemaName) => {
+    const schema = SCHEMAS[schemaName];
+    if (!schema) return data;
+    
+    const result = { ...data };
+    
+    // Ensure all schema keys exist with defaults if missing
+    for (const key in schema) {
+        if (result[key] === undefined) {
+             // Don't overwrite id if it's null in schema but we want auto-increment
+             if (key === 'id' && schema.id === null) continue;
+             result[key] = schema[key];
+        }
+    }
+    return result;
+};
 
 export const db = {
     open: () => {
@@ -14,7 +52,7 @@ export const db = {
                 if (!dbInstance.objectStoreNames.contains('entries')) {
                     store = dbInstance.createObjectStore('entries', { keyPath: 'id', autoIncrement: true });
                     store.createIndex('type', 'type', { unique: false });
-                    store.createIndex('recorded_at', 'recorded_at', { unique: false });
+                    store.createIndex('event_at', 'event_at', { unique: false });
                     store.createIndex('synced', 'synced', { unique: false });
                     store.createIndex('user_id', 'user_id', { unique: false });
                 } else {
@@ -22,6 +60,36 @@ export const db = {
                     if (!store.indexNames.contains('user_id')) {
                         store.createIndex('user_id', 'user_id', { unique: false });
                     }
+                    if (oldVersion < 4) {
+                         if (store.indexNames.contains('recorded_at')) {
+                             store.deleteIndex('recorded_at');
+                         }
+                         if (!store.indexNames.contains('event_at')) {
+                             store.createIndex('event_at', 'event_at', { unique: false });
+                         }
+                    }
+                }
+
+                if (!dbInstance.objectStoreNames.contains('users')) {
+                    dbInstance.createObjectStore('users', { keyPath: 'id' });
+                }
+
+                // Migration to Rename recorded_at -> event_at
+                if (oldVersion < 4) {
+                    const transaction = request.transaction;
+                    const entriesStore = transaction.objectStore('entries');
+                    entriesStore.openCursor().onsuccess = (e) => {
+                        const cursor = e.target.result;
+                        if (cursor) {
+                            const entry = cursor.value;
+                            if (entry.recorded_at) {
+                                entry.event_at = entry.recorded_at;
+                                delete entry.recorded_at;
+                                cursor.update(entry);
+                            }
+                            cursor.continue();
+                        }
+                    };
                 }
 
                 // Migration for version 3: Standardize date formats
@@ -39,10 +107,10 @@ export const db = {
                                 entry.created_at = entry.created_at.replace('T', ' ').substring(0, 19);
                                 changed = true;
                             }
-                            // Fix recorded_at
-                            if (entry.recorded_at && entry.recorded_at.includes('T')) {
-                                entry.recorded_at = entry.recorded_at.replace('T', ' ');
-                                if (entry.recorded_at.length === 16) entry.recorded_at += ':00';
+                            // Fix event_at
+                            if (entry.event_at && entry.event_at.includes('T')) {
+                                entry.event_at = entry.event_at.replace('T', ' ');
+                                if (entry.event_at.length === 16) entry.event_at += ':00';
                                 changed = true;
                             }
 
@@ -85,6 +153,10 @@ export const db = {
             if (typeof entry.data === 'string') {
                 try { entry.data = JSON.parse(entry.data); } catch(e){}
             }
+            
+            // Enforce Schema
+            entry = enforceSchema(entry, 'entries');
+
             entry.synced = 0;
             // Only set created_at for new entries
             if (!entry.created_at && !entry.id) {
@@ -96,6 +168,7 @@ export const db = {
 
     updateEntry: async (entry) => {
         return db.tx('entries', 'readwrite', (store) => {
+            entry = enforceSchema(entry, 'entries');
             entry.synced = 0; // Mark as dirty on update
             return store.put(entry);
         });
@@ -114,7 +187,7 @@ export const db = {
         return new Promise((resolve, reject) => {
             const transaction = dbInstance.transaction('entries', 'readonly');
             const store = transaction.objectStore('entries');
-            const index = store.index('recorded_at');
+            const index = store.index('event_at');
             const request = index.openCursor(null, 'prev'); // Descending order
             const results = [];
 
@@ -161,8 +234,36 @@ export const db = {
             request.onerror = () => reject(request.error);
         });
     },
+
+    saveUser: async (user) => {
+        // Enforce Schema
+        user = enforceSchema(user, 'users');
+        return db.tx('users', 'readwrite', store => store.put(user));
+    },
+
+    getUser: async (id) => {
+        const dbInstance = await db.open();
+        return new Promise((resolve, reject) => {
+            const transaction = dbInstance.transaction('users', 'readonly');
+            const store = transaction.objectStore('users');
+            const request = store.get(id);
+            request.onsuccess = () => resolve(request.result || null);
+            request.onerror = () => reject(request.error);
+        });
+    },
     
     clearAll: async () => {
-        return db.tx('entries', 'readwrite', store => store.clear());
+        const dbInstance = await db.open();
+        const stores = ['entries', 'settings', 'users'];
+        const transaction = dbInstance.transaction(stores, 'readwrite');
+        stores.forEach(s => {
+            if (dbInstance.objectStoreNames.contains(s)) {
+                transaction.objectStore(s).clear();
+            }
+        });
+        return new Promise((resolve, reject) => {
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error);
+        });
     }
 };

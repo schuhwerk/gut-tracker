@@ -1,7 +1,7 @@
 <?php
 require_once __DIR__ . '/TestHelper.php';
 
-$t = new TestHelper('http://localhost:8123/api.php');
+$t = new TestHelper();
 
 // 1. Create unique user & Login (to populate session)
 $username = 'repro_' . uniqid();
