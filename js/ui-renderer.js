@@ -98,7 +98,7 @@ export const UI = {
                         <div class="flex items-center gap-2"><span>${icon}</span><h3 class="font-bold text-white">${title}</h3></div>
                         <div class="flex items-center gap-2">
                              <div class="text-xs text-gray-500 text-right shrink-0">${timeStr}</div>
-                             <button class="btn-clone text-gray-500 hover:text-emerald-400 p-1 rounded-full hover:bg-dark-600 transition-colors pointer-events-auto" title="Quickly Re-add">
+                             <button type="button" class="btn-clone text-gray-500 hover:text-emerald-400 p-1 rounded-full hover:bg-dark-600 transition-colors pointer-events-auto" title="Quickly Re-add" aria-label="Quickly Re-add">
                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
                                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                                 </svg>

@@ -70,9 +70,4 @@ class EntryService {
         return $stmt->execute([$userId]);
     }
 
-    public function getEntriesForAiExport($userId) {
-        $stmt = $this->pdo->prepare("SELECT * FROM entries WHERE user_id = ? ORDER BY event_at ASC");
-        $stmt->execute([$userId]);
-        return $stmt->fetchAll();
-    }
 }

@@ -23,6 +23,10 @@ export const DataService = {
         }
     },
 
+    get canUseAi() {
+        return !!DataService.apiKey || (DataService.mode === 'HYBRID' && DataService.isAuthenticated);
+    },
+
     init: async () => {
         window.addEventListener('online', () => DataService.updateStatus(true));
         window.addEventListener('offline', () => DataService.updateStatus(false));
@@ -192,8 +196,31 @@ export const DataService = {
             try {
                 const res = await fetch(`api.php?endpoint=entries&limit=${limit}`);
                 if (!res.ok) throw new Error('API Error');
-                entries = await res.json();
+                const apiEntries = await res.json();
+
+                // Merge with local unsynced entries to ensure "pending" items are visible
+                const unsynced = await db.getUnsyncedEntries();
+                
+                // Create a Map for easy merging by ID
+                const entryMap = new Map();
+                apiEntries.forEach(e => entryMap.set(e.id, e));
+                
+                // Overlay unsynced (dirty) entries
+                unsynced.forEach(e => {
+                    entryMap.set(e.id, e);
+                });
+                
+                entries = Array.from(entryMap.values());
+                
+                // Re-sort by event_at DESC
+                entries.sort((a, b) => {
+                    const dateA = new Date(a.event_at.replace(' ', 'T'));
+                    const dateB = new Date(b.event_at.replace(' ', 'T'));
+                    return dateB - dateA;
+                });
+                
             } catch (e) {
+                console.warn('API fetch failed, falling back to local DB', e);
                 entries = await db.getEntries(limit);
             }
         } else {
@@ -274,65 +301,264 @@ export const DataService = {
     
     // AI Proxies
     aiParse: async (text) => {
-        return DataService._callAi('ai_parse', { text });
+        const payload = {
+            text: text,
+            client_time: new Date().toISOString().replace('T', ' ').substring(0, 19),
+            client_timezone_offset: new Date().getTimezoneOffset()
+        };
+        
+        // 1. Calculate Local Time Reference
+        const localTimeRef = DataService._getLocalReferenceTime(payload.client_timezone_offset);
+        
+        // 2. Build System Prompt
+        const systemPrompt = DataService._getMagicSystemPrompt(localTimeRef);
+        
+        // 3. Call AI
+        const response = await DataService._callAi({
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: text }
+            ],
+            response_format: { type: "json_object" }
+        });
+
+        // 4. Parse & Process (Timezone conversion)
+        let content = response.choices ? response.choices[0].message.content : (response.content || '{}');
+        
+        // Clean Markdown (just in case)
+        content = content.replace(/```json\n?|```/g, '').trim();
+
+        let items = [];
+        try {
+            const parsed = JSON.parse(content);
+            items = parsed.items || parsed || [];
+            if (!Array.isArray(items)) items = [items];
+        } catch (e) {
+            console.error("JSON Parse Error", e);
+            throw new Error("Failed to parse AI response: " + e.message);
+        }
+        
+        if (items.length === 0) {
+            throw new Error("AI returned no valid items.");
+        }
+        
+        return DataService._processAiResponse(items, payload.client_timezone_offset);
     },
     
     aiVision: async (imageBase64) => {
-        return DataService._callAi('ai_vision', { image_base64: imageBase64 });
+        const payload = {
+            client_time: new Date().toISOString().replace('T', ' ').substring(0, 19),
+            client_timezone_offset: new Date().getTimezoneOffset()
+        };
+
+        const localTimeRef = DataService._getLocalReferenceTime(payload.client_timezone_offset);
+        const systemPrompt = DataService._getMagicSystemPrompt(localTimeRef);
+
+        const response = await DataService._callAi({
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: [
+                    { type: "text", text: "Analyze this image and extract health tracking data. Identify if it is food, drink, a stool sample (Bristol scale), or related to sleep/symptoms. Return the JSON list." },
+                    { type: "image_url", image_url: { url: imageBase64 } }
+                ]}
+            ],
+            max_tokens: 500
+        });
+
+        const content = response.choices ? response.choices[0].message.content : (response.content || '[]');
+        let items = [];
+        try {
+            const parsed = JSON.parse(content);
+            items = parsed.items || parsed || [];
+            if (!Array.isArray(items)) items = [items];
+        } catch (e) {
+            console.error("JSON Parse Error", e);
+            throw new Error("Failed to parse AI Vision response.");
+        }
+        
+        if (items.length === 0) {
+             // It's possible the image had nothing relevant, but let's warn if it's strictly empty
+             // Actually, for vision, empty list might be valid if nothing found.
+             // But usually we want to know.
+             console.warn("AI Vision returned no items.");
+        }
+
+        return DataService._processAiResponse(items, payload.client_timezone_offset);
     },
 
     aiMagicVoice: async (audioBlob) => {
+        // Step 1: Transcribe (Always goes to backend for Whisper, or Direct OpenAI in Local)
+        let text = '';
         if (DataService.mode === 'HYBRID' && DataService.isAuthenticated) {
             const formData = new FormData();
             formData.append('audio_file', audioBlob);
-            // Pass legacy key in case server expects it, but server will look up config from DB mostly
-            // However, our api.php logic prefers `getAiConfig` from DB.
-            formData.append('api_key', DataService.apiKey); 
-            formData.append('client_time', new Date().toISOString().replace('T', ' ').substring(0, 19));
-            formData.append('client_timezone_offset', new Date().getTimezoneOffset());
+            formData.append('api_key', DataService.apiKey); // Legacy/Fallback
 
-            const res = await fetch('api.php?endpoint=ai_magic_voice', { method: 'POST', body: formData });
-            const data = await res.json();
-            if (!res.ok || data.error) {
-                const msg = typeof data.error === 'string' ? data.error : (data.message || JSON.stringify(data.error));
-                throw new Error(msg);
-            }
-            return data;
-        } else {
-            const transcribeResult = await DataService.aiTranscribe(audioBlob);
-            if (!transcribeResult || !transcribeResult.text) throw new Error('Transcription failed');
-            return DataService.aiParse(transcribeResult.text);
-        }
-    },
-    
-    aiTranscribe: async (audioBlob) => {
-        const formData = new FormData();
-        formData.append('audio_file', audioBlob);
-        formData.append('api_key', DataService.apiKey);
-        
-        if (DataService.mode === 'HYBRID' && DataService.isAuthenticated) {
             const res = await fetch('api.php?endpoint=ai_transcribe', { method: 'POST', body: formData });
             const data = await res.json();
             if (!res.ok || data.error) {
                  const msg = typeof data.error === 'string' ? data.error : (data.message || JSON.stringify(data.error));
                  throw new Error(msg);
             }
+            text = data.text;
+        } else {
+            const transcribeResult = await DataService.aiTranscribe(audioBlob);
+            if (!transcribeResult || !transcribeResult.text) throw new Error('Transcription failed');
+            text = transcribeResult.text;
+        }
+
+        if (!text) throw new Error('No speech detected');
+
+        // Step 2: Parse using JS Logic
+        return DataService.aiParse(text);
+    },
+    
+    aiTranscribe: async (audioBlob) => {
+        const hasLocalKey = !!DataService.apiKey;
+        const canUseProxy = DataService.mode === 'HYBRID' && DataService.isAuthenticated;
+
+        if (hasLocalKey) {
+            const formData = new FormData();
+            formData.append('file', audioBlob, 'recording.webm');
+            formData.append('model', 'whisper-1');
+            return DataService._directOpenAICall('audio/transcriptions', formData, true);
+        } else if (canUseProxy) {
+            const formData = new FormData();
+            formData.append('audio_file', audioBlob);
+            // No api_key sent, server injects
+            
+            const res = await fetch('api.php?endpoint=ai_transcribe', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (!res.ok || data.error) {
+                 const msg = typeof data.error === 'string' ? data.error : (data.message || JSON.stringify(data.error));
+                 throw new Error(msg);
+            }
+            if (!data.text || data.text.trim() === '') {
+                throw new Error('No speech detected in recording.');
+            }
             return data;
         } else {
-            return DataService._directOpenAICall('audio/transcriptions', formData, true);
+            throw new Error('NO_API_KEY');
         }
     },
 
-    _callAi: async (endpoint, payload) => {
-         const enrichedPayload = { 
-             ...payload, 
-             client_time: new Date().toISOString().replace('T', ' ').substring(0, 19),
-             client_timezone_offset: new Date().getTimezoneOffset()
-         };
+    // New Helpers Ported from PHP
+    _getLocalReferenceTime: (offsetMinutes) => {
+        // JS Date is already Local if we just do new Date(), but we need to match the Logic.
+        // PHP Logic: UTC Time - OffsetMinutes (where offset is like -120 for UTC+2).
+        // JS new Date().getTimezoneOffset() returns -120 for UTC+2.
+        // So Local Time = UTC - Offset.
+        // Wait, if I'm in UTC+2. Current is 14:00. UTC is 12:00. Offset is -120.
+        // UTC (12:00) - (-120m) = 14:00. Correct.
+        const now = new Date();
+        const utcTimestamp = now.getTime() + (now.getTimezoneOffset() * 60000); // Convert to UTC timestamp
+        
+        // Apply Offset to get User Local Time
+        // userOffset is what getTimezoneOffset() returns (e.g. -120 for UTC+2)
+        // We want to reconstruct the Local Time string.
+        // Actually, simpler: new Date() *is* Local.
+        // The PHP logic was converting a UTC string to Local.
+        // In JS, we just want a formatted Local string.
+        
+        const y = now.getFullYear();
+        const m = String(now.getMonth() + 1).padStart(2, '0');
+        const d = String(now.getDate()).padStart(2, '0');
+        const h = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+        const s = String(now.getSeconds()).padStart(2, '0');
+        return `${y}-${m}-${d} ${h}:${min}:${s}`;
+    },
 
-         if (DataService.mode === 'HYBRID' && DataService.isAuthenticated) {
-             const body = { ...enrichedPayload, api_key: DataService.apiKey };
-             const res = await fetch(`api.php?endpoint=${endpoint}`, {
+    _getMagicSystemPrompt: (localTimeStr) => {
+        return `Context:
+- User Local Time: ${localTimeStr}
+- Output: JSON Object containing a key 'items' which is a list.
+
+Task: Parse input into structured data.
+
+Rules:
+1. Use USER LOCAL TIME for 'event_at'. Do NOT convert to UTC.
+2. If user implies 'now', use the Context time.
+3. Infer amounts if vague (sip=0.05, cup=0.25, glass=0.3, mug=0.35, bottle=0.5).
+4. For 'sleep', 'event_at' is WAKE time.
+
+Schema (Object Structure):
+- { "type": "food", "event_at": "TIME", "data": { "notes": "string" } }
+- { "type": "drink", "event_at": "TIME", "data": { "notes": "string", "amount_liters": float } }
+- { "type": "stool", "event_at": "TIME", "data": { "bristol_score": int(1-7), "notes": "string" } }
+- { "type": "sleep", "event_at": "TIME", "data": { "duration_hours": float, "quality": int(1-5), "bedtime": "TIME" } }
+- { "type": "symptom", "event_at": "TIME", "data": { "notes": "string", "mood_score": int(1-5) } }
+- { "type": "activity", "event_at": "TIME", "data": { "duration_minutes": int, "intensity": "Low/Med/High", "notes": "string" } }`;
+    },
+
+    _processAiResponse: (items, offsetMinutes) => {
+        if (!Array.isArray(items)) return [];
+        const results = [];
+        
+        items.forEach(item => {
+            if (!item.event_at) return;
+            try {
+                // item.event_at is LOCAL time string (e.g. "2023-10-10 08:00:00")
+                let localDate = new Date(item.event_at.replace(' ', 'T'));
+                
+                // Fallback if date is invalid (e.g. AI returned garbage)
+                if (isNaN(localDate.getTime())) {
+                    console.warn('Invalid date from AI:', item.event_at, 'Using Now.');
+                    localDate = new Date();
+                }
+
+                // Convert to UTC
+                const utcString = localDate.toISOString().replace('T', ' ').substring(0, 19);
+                item.event_at = utcString;
+                
+                // Sleep Logic
+                if (item.type === 'sleep' && item.data && item.data.duration_hours) {
+                    const durationSecs = parseFloat(item.data.duration_hours) * 3600;
+                    const wakeTimeTs = localDate.getTime(); // UTC ms
+                    const bedtimeTs = wakeTimeTs - (durationSecs * 1000);
+                    const bedtimeDate = new Date(bedtimeTs);
+                    item.data.bedtime = bedtimeDate.toISOString().replace('T', ' ').substring(0, 19);
+                }
+                
+                results.push(item);
+            } catch (e) {
+                console.warn('Processing failed for item', item, e);
+            }
+        });
+        return results;
+    },
+
+    _callAi: async (payload) => {
+         // Payload is now OpenAI "chat/completions" body format (messages, etc)
+         const hasLocalKey = !!DataService.apiKey;
+         const canUseProxy = DataService.mode === 'HYBRID' && DataService.isAuthenticated;
+
+         if (!hasLocalKey && !canUseProxy) {
+             throw new Error('NO_API_KEY');
+         }
+
+         if (hasLocalKey) {
+             // Direct Implementation for Pure Browser Mode (or override)
+             let model = 'gpt-4o-mini';
+             if (DataService.aiConfig && DataService.aiConfig.model) {
+                 model = DataService.aiConfig.model;
+             }
+
+             const openAiBody = {
+                 model: model,
+                 temperature: 0,
+                 ...payload
+             };
+             
+             return DataService._directOpenAICall('chat/completions', openAiBody);
+         } else {
+             // Proxy Mode (Server injects key)
+             const body = { 
+                 ...payload, 
+                 api_key: null // Ensure we don't send null, server handles injection
+             };
+             
+             const res = await fetch(`api.php?endpoint=ai_chat_proxy`, {
                  method: 'POST',
                  headers: { 'Content-Type': 'application/json' },
                  body: JSON.stringify(body)
@@ -342,48 +568,13 @@ export const DataService = {
                  const msg = typeof data.error === 'string' ? data.error : (data.message || JSON.stringify(data.error));
                  throw new Error(msg);
              }
-             return data;
-         } else {
-             // Direct Implementation for Pure Browser Mode
-             if (!DataService.apiKey) throw new Error('NO_API_KEY');
              
-             let openAiEndpoint = '';
-             let openAiBody = {};
-             
-             if (endpoint === 'ai_parse' || endpoint === 'ai_vision') {
-                 openAiEndpoint = 'chat/completions';
-                 const messages = [];
-                 const sysPrompt = `You are a health tracking assistant. 
-                 Current UTC time: ${enrichedPayload.client_time}. 
-                 User Timezone Offset (minutes): ${enrichedPayload.client_timezone_offset}.
-                 CRITICAL: All returned dates/times MUST be in UTC.
-                 Analyze the user's input and extract data into a JSON ARRAY of objects.`;
-                 
-                 messages.push({ role: 'system', content: sysPrompt });
-                 
-                 if (endpoint === 'ai_vision') {
-                     messages.push({ role: 'user', content: [
-                         { type: 'text', text: 'Analyze image for health tracking.' },
-                         { type: 'image_url', image_url: { url: payload.image_base64 } }
-                     ]});
-                 } else {
-                     messages.push({ role: 'user', content: payload.text });
-                 }
-                 
-                 // Determine Model
-                 let model = 'gpt-4o-mini';
-                 if (DataService.aiConfig && DataService.aiConfig.model) {
-                     model = DataService.aiConfig.model;
-                 }
-
-                 openAiBody = {
-                     model: model,
-                     messages: messages,
-                     temperature: 0
-                 };
+             const content = data.choices ? data.choices[0].message.content : (data.content || '');
+             if (!content || String(content).trim() === '') {
+                 throw new Error('AI returned an empty response.');
              }
-             
-             return DataService._directOpenAICall(openAiEndpoint, openAiBody);
+
+             return data;
          }
     },
 
@@ -413,14 +604,6 @@ export const DataService = {
 
         if (data.error) throw new Error(data.error.message || data.error);
         
-        if (data.choices) {
-            const content = data.choices[0].message.content.replace(/```json|```/g, '');
-            try {
-                return JSON.parse(content);
-            } catch (e) {
-                return content;
-            }
-        }
         return data;
     },
 

@@ -420,85 +420,55 @@ if ($method === 'GET' && $endpoint === 'export') {
     exit;
 }
 
-if ($method === 'GET' && $endpoint === 'ai_export') {
+
+if ($method === 'POST' && $endpoint === 'ai_chat_proxy') {
     requireAuth();
     $userId = $_SESSION['user_id'];
-    $entries = $entryService->getEntriesForAiExport($userId);
-    
-    $output = "GUT TRACKER EXPORT (FOR AI ANALYSIS)\n";
-    $output .= "Format: [HH:MM] TYPE [Metrics]: Notes\n";
-    $output .= "=====================================\n";
-    $output .= "LEGEND:\n";
-    $output .= "Stool (Bristol Scale 1-7):\n";
-    $output .= "  1-2: Constipation | 3-4: Normal | 5-7: Diarrhea\n";
-    $output .= "Mood & Sleep Quality (1-5):\n";
-    $output .= "  1: Very Bad/Awful | 5: Excellent/Great\n";
-    $output .= "Activity Intensity: Low, Medium, High\n";
-    $output .= "=====================================\n";
-
-    $currentDay = '';
-
-    foreach ($entries as $e) {
-        $data = json_decode($e['data'], true) ?: [];
-        $recordedAt = $e['event_at'];
-        $dateStr = substr($recordedAt, 0, 10);
-        $timeStr = substr($recordedAt, 11, 5);
-        
-        if ($dateStr !== $currentDay) {
-            $output .= "\n# $dateStr\n";
-            $currentDay = $dateStr;
-        }
-        
-        $type = strtoupper($e['type']);
-        $metrics = [];
-        
-        if ($e['type'] === 'drink') {
-            if (!empty($data['amount_liters'])) $metrics[] = $data['amount_liters'] . 'L';
-        } else if ($e['type'] === 'stool') {
-            if (!empty($data['bristol_score'])) $metrics[] = 'Bristol:' . $data['bristol_score'];
-        } else if ($e['type'] === 'sleep') {
-            if (!empty($data['duration_hours'])) $metrics[] = $data['duration_hours'] . 'h';
-            if (!empty($data['quality'])) $metrics[] = 'Qual:' . $data['quality'] . '/5';
-        } else if ($e['type'] === 'feeling' || $e['type'] === 'symptom') {
-            $score = $data['mood_score'] ?? $data['severity'] ?? null;
-            if ($score !== null) $metrics[] = "Mood:$score/5";
-        } else if ($e['type'] === 'activity') {
-             if (!empty($data['duration_minutes'])) $metrics[] = $data['duration_minutes'] . 'min';
-             if (!empty($data['intensity'])) $metrics[] = $data['intensity'];
-        }
-        
-        $line = "[$timeStr] $type";
-        if (!empty($metrics)) $line .= " [" . implode(', ', $metrics) . "]";
-        
-        if (!empty($data['notes'])) {
-            $line .= ": " . $data['notes'];
-        }
-        
-        $output .= $line . "\n";
-    }
-
-    header('Content-Type: text/plain');
-    header('Content-Disposition: attachment; filename="gut_tracker_ai_export.txt"');
-    echo $output;
-    exit;
-}
-
-if ($method === 'POST' && $endpoint === 'ai_parse') {
-    requireAuth();
-    $text = $input['text'] ?? '';
-    $userId = $_SESSION['user_id'];
-    // Use getAiConfig
     $config = getAiConfig($userService, $userId, $input['api_key'] ?? null);
 
-    if (!$text) jsonResponse(['error' => 'Missing text'], 400);
     if (!$config) jsonResponse(['error' => 'NO_API_KEY', 'message' => 'Missing API configuration'], 400);
 
-    $currentDate = $input['client_time'] ?? gmdate('Y-m-d H:i:s');
-    $offset = $input['client_timezone_offset'] ?? 0;
+    // Filter Payload for OpenAI
+    $allowedKeys = ['messages', 'model', 'temperature', 'response_format', 'max_tokens', 'frequency_penalty', 'presence_penalty', 'stop', 'stream'];
+    $openAiPayload = array_filter($input, function($k) use ($allowedKeys) {
+        return in_array($k, $allowedKeys);
+    }, ARRAY_FILTER_USE_KEY);
     
+    if (empty($openAiPayload['messages'])) {
+        jsonResponse(['error' => 'Missing messages'], 400);
+    }
+
     try {
         $ai = new AiService($config);
-        jsonResponse($ai->parseText($text, $currentDate, $offset));
+        $response = $ai->request('chat/completions', $openAiPayload);
+        
+        $content = $response['choices'][0]['message']['content'] ?? '';
+        if (empty(trim($content))) {
+            throw new Exception('AI returned an empty response.');
+        }
+
+        // Log if debug mode is on
+        $user = $userService->getUser($userId);
+        if ($user && $user['debug_mode']) {
+             $lastMsg = end($openAiPayload['messages']);
+             $promptText = $lastMsg['content'] ?? 'Unknown';
+             if (is_array($promptText)) $promptText = 'Complex Content (Vision)';
+             
+             $responseText = $response['choices'][0]['message']['content'] ?? json_encode($response);
+
+             $logStmt = $pdo->prepare("INSERT INTO logs (user_id, type, message, context) VALUES (?, ?, ?, ?)");
+             $logStmt->execute([
+                $userId, 
+                'ai_proxy', 
+                'AI Request', 
+                json_encode(['prompt' => $promptText, 'response' => $responseText])
+             ]);
+             
+             // Cleanup logs
+             $pdo->prepare("DELETE FROM logs WHERE user_id = ? AND id NOT IN (SELECT id FROM logs WHERE user_id = ? ORDER BY id DESC LIMIT 500)")->execute([$userId, $userId]);
+        }
+        
+        jsonResponse($response);
     } catch (Exception $e) {
         if (strpos($e->getMessage(), 'INVALID_API_KEY') !== false) {
              jsonResponse(['error' => 'INVALID_API_KEY', 'message' => $e->getMessage()], 401);
@@ -523,41 +493,6 @@ if ($method === 'POST' && $endpoint === 'delete') {
     }
 }
 
-if ($method === 'POST' && $endpoint === 'ai_vision') {
-    requireAuth();
-    $imageBase64 = $input['image_base64'] ?? '';
-    $userId = $_SESSION['user_id'];
-    $config = getAiConfig($userService, $userId, $input['api_key'] ?? null);
-
-    if (!$imageBase64) jsonResponse(['error' => 'Missing image'], 400);
-    if (!$config) jsonResponse(['error' => 'NO_API_KEY', 'message' => 'Missing API configuration'], 400);
-
-    $currentDate = $input['client_time'] ?? gmdate('Y-m-d H:i:s');
-    $offset = $input['client_timezone_offset'] ?? 0;
-
-    try {
-        $ai = new AiService($config);
-        $data = $ai->callOpenAI('chat/completions', [
-            "messages" => [
-                ["role" => "system", "content" => $ai->getMagicParsingSystemPrompt($currentDate, $offset)],
-                ["role" => "user", "content" => [
-                    ["type" => "text", "text" => "Analyze this image and extract health tracking data. Identify if it is food, drink, a stool sample (Bristol scale), or related to sleep/symptoms. Return the JSON list."],
-                    ["type" => "image_url", "image_url" => ["url" => $imageBase64]]
-                ]]
-            ],
-            "max_tokens" => 500
-        ]);
-
-        $content = $data['choices'][0]['message']['content'] ?? '[]';
-        jsonResponse($ai->parseAiJsonContent($content));
-    } catch (Exception $e) {
-        if (strpos($e->getMessage(), 'INVALID_API_KEY') !== false) {
-             jsonResponse(['error' => 'INVALID_API_KEY', 'message' => $e->getMessage()], 401);
-        }
-        jsonResponse(['error' => $e->getMessage()], 400);
-    }
-}
-
 if ($method === 'POST' && $endpoint === 'ai_transcribe') {
     requireAuth();
     $userId = $_SESSION['user_id'];
@@ -569,62 +504,17 @@ if ($method === 'POST' && $endpoint === 'ai_transcribe') {
     try {
         $ai = new AiService($config);
         $cfile = new CURLFile($_FILES['audio_file']['tmp_name'], $_FILES['audio_file']['type'], 'audio.webm');
-        $data = $ai->callOpenAI('audio/transcriptions', [
+        $data = $ai->request('audio/transcriptions', [
             'file' => $cfile,
             'model' => 'whisper-1'
         ], true);
         
-        jsonResponse(['text' => $data['text'] ?? '']);
-    } catch (Exception $e) {
-        if (strpos($e->getMessage(), 'INVALID_API_KEY') !== false) {
-             jsonResponse(['error' => 'INVALID_API_KEY', 'message' => $e->getMessage()], 401);
+        $text = $data['text'] ?? '';
+        if (empty(trim($text))) {
+            throw new Exception('No speech detected in recording.');
         }
-        jsonResponse(['error' => $e->getMessage()], 400);
-    }
-}
 
-if ($method === 'POST' && $endpoint === 'ai_magic_voice') {
-    requireAuth();
-    $userId = $_SESSION['user_id'];
-    $config = getAiConfig($userService, $userId, $input['api_key'] ?? $_POST['api_key'] ?? null);
-
-    if (empty($_FILES['audio_file'])) jsonResponse(['error' => 'Missing audio file'], 400);
-    if (!$config) jsonResponse(['error' => 'NO_API_KEY', 'message' => 'Missing API configuration'], 400);
-
-    try {
-        $ai = new AiService($config);
-        // 1. Transcribe
-        $cfile = new CURLFile($_FILES['audio_file']['tmp_name'], $_FILES['audio_file']['type'], 'audio.webm');
-        $transcribeData = $ai->callOpenAI('audio/transcriptions', [
-            'file' => $cfile,
-            'model' => 'whisper-1'
-        ], true);
-
-        $text = $transcribeData['text'] ?? '';
-        if (!$text) jsonResponse(['error' => 'No speech detected'], 400);
-
-        // 2. Parse Text
-        $currentDate = $_POST['client_time'] ?? gmdate('Y-m-d H:i:s');
-        $offset = $_POST['client_timezone_offset'] ?? 0;
-        
-        $items = $ai->parseText($text, $currentDate, $offset);
-        
-        // Log if debug mode is on
-        $user = $userService->getUser($userId);
-        if ($user && $user['debug_mode']) {
-            $logStmt = $pdo->prepare("INSERT INTO logs (user_id, type, message, context) VALUES (?, ?, ?, ?)");
-            $logStmt->execute([
-                $userId, 
-                'ai_voice', 
-                'AI Interaction', 
-                json_encode(['prompt' => "Transcribed: $text", 'response' => json_encode($items)])
-            ]);
-
-            // Keep max 500 entries per user
-            $pdo->prepare("DELETE FROM logs WHERE user_id = ? AND id NOT IN (SELECT id FROM logs WHERE user_id = ? ORDER BY id DESC LIMIT 500)")->execute([$userId, $userId]);
-        }
-        
-        jsonResponse($items);
+        jsonResponse(['text' => $text]);
     } catch (Exception $e) {
         if (strpos($e->getMessage(), 'INVALID_API_KEY') !== false) {
              jsonResponse(['error' => 'INVALID_API_KEY', 'message' => $e->getMessage()], 401);

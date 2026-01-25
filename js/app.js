@@ -8,6 +8,7 @@ const app = {
     pendingDrafts: [],
     mediaRecorder: null,
     audioChunks: [],
+    lastFailedAudio: null,
     magicBtnHandlers: { timer: null, isLongPress: false, startTime: 0 },
     charts: {},
     isReviewing: false,
@@ -531,7 +532,7 @@ const app = {
                 prev.innerHTML = `
                 <div class="relative inline-block">
                     <img src="${entry.data.image_path}" class="h-32 rounded-lg border border-dark-600 bg-dark-800 object-cover" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNmI3MjgwIiBzdHJva2Utd2lkdGg9IjIiPjxwYXRoIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgZD0iTTEyIDl2Mn0xMiAxNXYuMDFNMjEgMTJjMCA0Ljk3LTQuMDMgOS05IDlTMiAxNi45NyAyIDEyIDEyIDIuOTggMTIgMi45OCA5IDIxIDEyek0xMiA4VjQiIC8+PC9zdmc+'">
-                    <button type="button" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors z-10" onclick="app.removeImage(this)">
+                    <button type="button" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow-md hover:bg-red-600 transition-colors z-10" onclick="app.removeImage(this)" aria-label="Remove Image">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                           <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
                         </svg>
@@ -741,8 +742,8 @@ const app = {
     },
 
     handleImageSelect: async (input) => {
-        if (!DataService.apiKey) {
-            alert('Please add your OpenAI API Key in settings to use AI features.');
+        if (!DataService.canUseAi) {
+            alert('Please add your OpenAI API Key in settings or Login to use AI features.');
             Router.navigate('settings');
             input.value = '';
             return;
@@ -777,8 +778,8 @@ const app = {
     },
     
     processMagicImage: async (input) => {
-         if (!DataService.apiKey) {
-            alert('Please add your OpenAI API Key in settings to use AI features.');
+         if (!DataService.canUseAi) {
+            alert('Please add your OpenAI API Key in settings or Login to use AI features.');
             Router.navigate('settings');
             input.value = '';
             return;
@@ -898,15 +899,15 @@ const app = {
                    <div class="flex-1 min-w-0">
                        <div class="flex justify-between items-start mb-1">
                            <div class="flex items-center gap-2"><span>${icon}</span><h3 class="font-bold text-white">${title}</h3></div>
-                           <button onclick="app.cancelMagicEntry(${index})" class="text-gray-500 hover:text-red-400 p-1">✕</button>
+                           <button type="button" onclick="app.cancelMagicEntry(${index})" class="text-gray-500 hover:text-red-400 p-1">✕</button>
                        </div>
                        <div class="text-sm text-gray-300">${content}</div>
                        <div class="text-xs text-gray-500 mt-2">Recorded at: ${utils.fromUTC(entry.event_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
                    </div>
                </div>
                <div class="grid grid-cols-2 gap-2">
-                   <button onclick="app.reviewMagicEntry(${index})" class="bg-dark-700 hover:bg-dark-600 text-gray-300 py-2 rounded-lg text-xs font-bold border border-dark-600">Review</button>
-                   <button onclick="app.saveMagicEntry(${index})" class="bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-lg text-xs font-bold shadow-lg shadow-emerald-900/20">Add</button>
+                   <button type="button" onclick="app.reviewMagicEntry(${index})" class="bg-dark-700 hover:bg-dark-600 text-gray-300 py-2 rounded-lg text-xs font-bold border border-dark-600">Review</button>
+                   <button type="button" onclick="app.saveMagicEntry(${index})" class="bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-lg text-xs font-bold shadow-lg shadow-emerald-900/20">Add</button>
                </div>
             `;
             container.appendChild(div);
@@ -1038,6 +1039,62 @@ const app = {
         }
     },
 
+    showRetryToast: (errorMsg) => {
+        const existing = document.getElementById('voice-retry-toast');
+        if (existing) existing.remove();
+
+        // Extract meaningful message
+        const msg = errorMsg.replace('Error: ', '').substring(0, 40) + (errorMsg.length > 40 ? '...' : '');
+
+        const toast = document.createElement('div');
+        toast.id = 'voice-retry-toast';
+        toast.className = 'fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 bg-red-900/95 text-white pl-4 pr-2 py-2 rounded-full shadow-lg border border-red-700 flex items-center gap-3 shadow-2xl backdrop-blur-sm animate-bounce';
+        toast.style.animationIterationCount = '1';
+        toast.innerHTML = `
+            <div class="flex flex-col">
+                <span class="font-bold text-xs uppercase text-red-200">Processing Failed</span>
+                <span class="text-xs text-white max-w-[150px] truncate" title="${errorMsg}">${msg}</span>
+            </div>
+            <button type="button" id="btn-voice-retry" class="bg-white text-red-900 px-3 py-1.5 rounded-full text-xs font-bold hover:bg-gray-100 transition-colors shadow-sm">
+                RETRY
+            </button>
+            <button type="button" id="btn-voice-dismiss" class="text-red-300 hover:text-white px-2 p-1 rounded-full hover:bg-red-800 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+        `;
+        document.body.appendChild(toast);
+        
+        toast.querySelector('#btn-voice-retry').onclick = () => app.retryLastVoice();
+        toast.querySelector('#btn-voice-dismiss').onclick = () => {
+             app.lastFailedAudio = null;
+             toast.remove();
+        };
+    },
+
+    retryLastVoice: async () => {
+        if (!app.lastFailedAudio) return;
+        
+        const audioBlob = app.lastFailedAudio;
+        // Keep it in lastFailedAudio in case retry fails too, so we don't null it yet
+        
+        const toast = document.getElementById('voice-retry-toast');
+        if(toast) toast.remove();
+
+        UI.toggleLoading(true, 'Retrying Voice...');
+        try {
+            const results = await DataService.aiMagicVoice(audioBlob);
+            if(results) {
+                app.handleMagicResults(Array.isArray(results) ? results : [results]);
+                app.lastFailedAudio = null; // Success, now we can clear it
+            }
+        } catch(e) {
+            console.error(e);
+            app.showRetryToast(e.message || 'Retry failed');
+        } finally {
+            UI.toggleLoading(false);
+        }
+    },
+
     updateAlertIcon: () => {
         const icon = document.getElementById('btn-status-icon');
         if (!icon) return;
@@ -1114,7 +1171,7 @@ const app = {
         toast.className = 'fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 bg-dark-800 text-white px-6 py-3 rounded-full shadow-lg border border-dark-600 flex items-center gap-4 shadow-2xl';
         toast.innerHTML = `
             <span>${msg}</span>
-            <button id="btn-undo" class="text-emerald-400 font-bold hover:text-emerald-300 border-l border-dark-600 pl-4">UNDO</button>
+            <button type="button" id="btn-undo" class="text-emerald-400 font-bold hover:text-emerald-300 border-l border-dark-600 pl-4">UNDO</button>
         `;
         document.body.appendChild(toast);
         
@@ -1227,8 +1284,8 @@ const app = {
         if (!btn) return;
         
         const start = (e) => {
-            if (!DataService.apiKey) {
-                alert('Please add your OpenAI API Key in settings to use AI features.');
+            if (!DataService.canUseAi) {
+                alert('Please add your OpenAI API Key in settings or Login to use AI features.');
                 Router.navigate('settings');
                 return;
             }
@@ -1257,10 +1314,13 @@ const app = {
                         if(results) app.handleMagicResults(Array.isArray(results) ? results : [results]);
                      } catch(e) {
                          console.error(e);
+                         app.lastFailedAudio = audioBlob;
+                         
                          if (e.message.includes('Unauthorized') || e.message.includes('INVALID_API_KEY')) {
-                             alert('Authentication failed. Please check your API Key in settings or try logging in again.');
+                             alert('Authentication failed. Check settings. You can retry this recording after fixing the key.');
+                             app.showRetryToast('Authentication Error');
                          } else {
-                             alert('Voice Error: ' + e.message);
+                             app.showRetryToast(e.message || 'Unknown error');
                          }
                      }
                      UI.toggleLoading(false);
