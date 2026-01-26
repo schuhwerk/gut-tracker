@@ -481,14 +481,16 @@ Rules:
 2. If user implies 'now', use the Context time.
 3. Infer amounts if vague (sip=0.05, cup=0.25, glass=0.3, mug=0.35, bottle=0.5).
 4. For 'sleep', 'event_at' is WAKE time.
+5. Format 'event_at' strictly as "YYYY-MM-DD HH:MM:SS".
+6. If time is unspecified for a relative date (e.g. 'yesterday'), default to 12:00:00.
 
 Schema (Object Structure):
-- { "type": "food", "event_at": "TIME", "data": { "notes": "string" } }
-- { "type": "drink", "event_at": "TIME", "data": { "notes": "string", "amount_liters": float } }
-- { "type": "stool", "event_at": "TIME", "data": { "bristol_score": int(1-7), "notes": "string" } }
-- { "type": "sleep", "event_at": "TIME", "data": { "duration_hours": float, "quality": int(1-5), "bedtime": "TIME" } }
-- { "type": "symptom", "event_at": "TIME", "data": { "notes": "string", "mood_score": int(1-5) } }
-- { "type": "activity", "event_at": "TIME", "data": { "duration_minutes": int, "intensity": "Low/Med/High", "notes": "string" } }`;
+- { "type": "food", "event_at": "YYYY-MM-DD HH:MM:SS", "data": { "notes": "string" } }
+- { "type": "drink", "event_at": "YYYY-MM-DD HH:MM:SS", "data": { "notes": "string", "amount_liters": float } }
+- { "type": "stool", "event_at": "YYYY-MM-DD HH:MM:SS", "data": { "bristol_score": int(1-7), "notes": "string" } }
+- { "type": "sleep", "event_at": "YYYY-MM-DD HH:MM:SS", "data": { "duration_hours": float, "quality": int(1-5), "bedtime": "YYYY-MM-DD HH:MM:SS" } }
+- { "type": "symptom", "event_at": "YYYY-MM-DD HH:MM:SS", "data": { "notes": "string", "mood_score": int(1-5) } }
+- { "type": "activity", "event_at": "YYYY-MM-DD HH:MM:SS", "data": { "duration_minutes": int, "intensity": "Low/Med/High", "notes": "string" } }`;
     },
 
     _processAiResponse: (items, offsetMinutes) => {

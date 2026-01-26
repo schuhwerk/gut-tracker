@@ -1,7 +1,7 @@
 <?php
 
 class TestHelper {
-    private $baseUrl;
+    private $baseUrl = 'http://127.0.0.1:8088/api.php';
     private $cookieFile;
     private $debug;
 

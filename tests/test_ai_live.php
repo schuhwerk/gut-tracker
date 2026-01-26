@@ -31,9 +31,11 @@ Task: Parse input into structured data.
 Rules:
 1. Use USER LOCAL TIME for 'event_at'.
 2. For 'sleep', 'event_at' is WAKE time.
+3. Format 'event_at' strictly as "YYYY-MM-DD HH:MM:SS".
+4. If time is unspecified for a relative date (e.g. 'yesterday'), default to 12:00:00.
 
 Schema:
-- { \"type\": \"sleep\", \"event_at\": \"TIME\", \"data\": { \"duration_hours\": float, \"quality\": int(1-5), \"bedtime\": \"TIME\" } }";
+- { \"type\": \"sleep\", \"event_at\": \"YYYY-MM-DD HH:MM:SS\", \"data\": { \"duration_hours\": float, \"quality\": int(1-5), \"bedtime\": \"YYYY-MM-DD HH:MM:SS\" } }";
 
     $payload = [
         'model' => 'gpt-4o-mini',
