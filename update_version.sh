@@ -3,9 +3,18 @@
 NEW_VERSION=$1
 
 if [ -z "$NEW_VERSION" ]; then
-  echo "Usage: ./update_version.sh <version>"
-  echo "Example: ./update_version.sh 1.9"
-  exit 1
+  CURRENT_VERSION=$(grep '"version":' manifest.json | sed -E 's/.*"version": "([^"]+)".*/\1/')
+  if [[ $CURRENT_VERSION =~ ^([0-9]+)\.([0-9]+)$ ]]; then
+    MAJOR=${BASH_REMATCH[1]}
+    MINOR=${BASH_REMATCH[2]}
+    NEXT_MINOR=$((MINOR + 1))
+    NEW_VERSION="$MAJOR.$NEXT_MINOR"
+    echo "No version specified. Auto-incrementing minor version from $CURRENT_VERSION to $NEW_VERSION"
+  else
+    echo "Usage: ./update_version.sh <version>"
+    echo "Example: ./update_version.sh 1.9"
+    exit 1
+  fi
 fi
 
 echo "Updating app to version $NEW_VERSION..."
