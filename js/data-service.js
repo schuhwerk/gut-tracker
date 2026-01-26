@@ -482,7 +482,6 @@ Rules:
 3. Infer amounts if vague (sip=0.05, cup=0.25, glass=0.3, mug=0.35, bottle=0.5).
 4. For 'sleep', 'event_at' is WAKE time.
 5. Format 'event_at' strictly as "YYYY-MM-DD HH:MM:SS".
-6. If time is unspecified for a relative date (e.g. 'yesterday'), default to 12:00:00.
 
 Schema (Object Structure):
 - { "type": "food", "event_at": "YYYY-MM-DD HH:MM:SS", "data": { "notes": "string" } }
@@ -501,6 +500,12 @@ Schema (Object Structure):
             if (!item.event_at) return;
             try {
                 // item.event_at is LOCAL time string (e.g. "2023-10-10 08:00:00")
+                if (item.event_at && item.event_at.endsWith(' 00:00:00')) {
+                    // If time is 00:00:00, it likely means the user didn't specify a time (e.g. "yesterday").
+                    // We default to 12:00:00 to place it in the middle of the day.
+                    item.event_at = item.event_at.replace(' 00:00:00', ' 12:00:00');
+                }
+
                 let localDate = new Date(item.event_at.replace(' ', 'T'));
                 
                 // Fallback if date is invalid (e.g. AI returned garbage)

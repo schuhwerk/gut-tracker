@@ -29,10 +29,11 @@ function runSleepTest($t, $apiKey, $text, $expectedDuration) {
 Task: Parse input into structured data.
 
 Rules:
-1. Use USER LOCAL TIME for 'event_at'.
-2. For 'sleep', 'event_at' is WAKE time.
-3. Format 'event_at' strictly as "YYYY-MM-DD HH:MM:SS".
-4. If time is unspecified for a relative date (e.g. 'yesterday'), default to 12:00:00.
+1. Use USER LOCAL TIME for 'event_at'. Do NOT convert to UTC.
+2. If user implies 'now', use the Context time.
+3. Infer amounts if vague (sip=0.05, cup=0.25, glass=0.3, mug=0.35, bottle=0.5).
+4. For 'sleep', 'event_at' is WAKE time.
+5. Format 'event_at' strictly as 'YYYY-MM-DD HH:MM:SS'.
 
 Schema:
 - { \"type\": \"sleep\", \"event_at\": \"YYYY-MM-DD HH:MM:SS\", \"data\": { \"duration_hours\": float, \"quality\": int(1-5), \"bedtime\": \"YYYY-MM-DD HH:MM:SS\" } }";

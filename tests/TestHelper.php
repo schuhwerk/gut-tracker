@@ -8,7 +8,7 @@ class TestHelper {
     public function __construct($baseUrl = null, $cookieFile = null) {
         if ($baseUrl === null) {
             $envUrl = getenv('TEST_BASE_URL');
-            $this->baseUrl = $envUrl ?: 'http://127.0.0.1:8087/api.php';
+            $this->baseUrl = $envUrl ?: 'http://127.0.0.1:8088/api.php';
         } else {
             $this->baseUrl = $baseUrl;
         }
