@@ -1,12 +1,16 @@
-import { db } from './idb-store.js';
+import { GutDB } from './gut-db.js';
 
 export const DataService = {
     mode: 'LOCAL', // 'LOCAL' or 'HYBRID'
     isAuthenticated: false,
     userId: null,
     isOnline: navigator.onLine,
+    syncIntervalMs: 60000,
+    syncTimer: null,
+    _syncInProgress: false,
     // aiConfig object: { provider, api_key, base_url, model }
-    aiConfig: null, 
+    aiConfig: null,
+    serverAiConfig: null,
     debugMode: false,
 
     // Legacy getter for backward compatibility
@@ -32,7 +36,7 @@ export const DataService = {
         window.addEventListener('offline', () => DataService.updateStatus(false));
         
         try {
-            const res = await fetch('api.php?endpoint=check_auth');
+            const res = await fetch(`api.php?endpoint=check_auth&t=${Date.now()}`);
             if (res.ok) {
                 DataService.mode = 'HYBRID';
                 const data = await res.json();
@@ -40,19 +44,43 @@ export const DataService = {
                 DataService.userId = data.user_id || null;
                 if (data.authenticated) {
                     // Prefer ai_config, fallback to api_key
-                    if (data.ai_config) DataService.aiConfig = data.ai_config;
-                    else if (data.api_key) DataService.aiConfig = { provider: 'openai', api_key: data.api_key };
+                    if (data.ai_config) {
+                        DataService.aiConfig = data.ai_config;
+                        DataService.serverAiConfig = data.ai_config;
+                    } else if (data.api_key) {
+                        DataService.aiConfig = { provider: 'openai', api_key: data.api_key };
+                        DataService.serverAiConfig = { provider: 'openai', api_key: data.api_key };
+                    } else {
+                        DataService.serverAiConfig = null;
+                    }
                     
                     DataService.debugMode = !!data.debug_mode;
 
+                    // Claim anonymous entries
+                    try {
+                        const anonEntries = await GutDB.getUnsynced(0); 
+                        if (anonEntries && anonEntries.length > 0) {
+                            console.log(`DataService: Claiming ${anonEntries.length} anonymous entries for User ${DataService.userId}`);
+                            for (const entry of anonEntries) {
+                                entry.user_id = DataService.userId;
+                                // This will now sync to server because user_id is set
+                                await GutDB.saveEntry(entry);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('DataService: Failed to claim anonymous entries', e);
+                    }
+
                     // Cache user info locally
-                    await db.saveUser({
+                    await GutDB.saveUser({
                         id: DataService.userId,
                         username: data.username || 'user',
                         ai_config: DataService.aiConfig,
                         debug_mode: DataService.debugMode ? 1 : 0,
                         api_key: DataService.aiConfig ? DataService.aiConfig.api_key : null
                     });
+                } else {
+                    DataService.serverAiConfig = null;
                 }
             }
         } catch (e) {
@@ -61,23 +89,28 @@ export const DataService = {
             DataService.isAuthenticated = false;
         }
         
+        await GutDB.init(DataService.mode, DataService.isAuthenticated, DataService.userId);
+
         if (!DataService.isAuthenticated) {
             const localUser = await DataService._ensureLocalUser();
             DataService.userId = localUser.id;
             DataService.aiConfig = localUser.ai_config;
             DataService.debugMode = !!localUser.debug_mode;
+            GutDB.userId = localUser.id; // Update GutDB
         }
+
+        DataService.startSyncLoop();
 
         console.log(`DataService initialized in ${DataService.mode} mode. User ID: ${DataService.userId}`);
         return DataService.mode;
     },
 
     _ensureLocalUser: async () => {
-        let localUser = await db.getUser(0);
+        let localUser = await GutDB.getUser(0);
         if (!localUser) {
             // Migration logic
             // Check for old 'local' user
-            const oldLocalUser = await db.getUser('local');
+            const oldLocalUser = await GutDB.getUser('local');
             if (oldLocalUser) {
                 // Migrate from 'local' to 0
                 localUser = { ...oldLocalUser, id: 0 };
@@ -85,8 +118,12 @@ export const DataService = {
                 // Let's just create the new one.
             } else {
                 let aiConfig = null;
-                const legacyKey = await db.getSetting('openai_api_key');
-                if (legacyKey) aiConfig = { provider: 'openai', api_key: legacyKey };
+                // Legacy check - we might need to expose getSetting in GutDB
+                // But for now let's assume if it's not in user, we are fresh or migrated.
+                // We can access LocalDB via GutDB if we expose it, or just use GutDB wrapper
+                
+                // For safety, let's skip the legacy setting check or add getSetting to GutDB
+                // localUser defaults
     
                 localUser = {
                     id: 0,
@@ -97,7 +134,7 @@ export const DataService = {
                     api_key: aiConfig ? aiConfig.api_key : null
                 };
             }
-            await db.saveUser(localUser);
+            await GutDB.saveUser(localUser);
         }
         return localUser;
     },
@@ -109,23 +146,42 @@ export const DataService = {
         }
     },
 
-    saveSettings: async (config, debugMode) => {
+    startSyncLoop: () => {
+        DataService.stopSyncLoop();
+        if (DataService.mode !== 'HYBRID' || !DataService.isAuthenticated) return;
+        DataService.syncTimer = setInterval(() => {
+            DataService.sync();
+        }, DataService.syncIntervalMs);
+    },
+
+    stopSyncLoop: () => {
+        if (DataService.syncTimer) {
+            clearInterval(DataService.syncTimer);
+            DataService.syncTimer = null;
+        }
+    },
+
+    saveSettings: async (config, debugMode, syncToServer = true) => {
         // config is expected to be an object now { provider, api_key, base_url, model }
         DataService.aiConfig = config;
         DataService.debugMode = debugMode;
         
         // Save to local user record
         const userId = DataService.userId || 0;
-        const user = await db.getUser(userId) || { id: userId, username: userId === 0 ? 'anonymous' : 'user' };
+        const user = await GutDB.getUser(userId) || { id: userId, username: userId === 0 ? 'anonymous' : 'user' };
         user.ai_config = config;
         user.debug_mode = debugMode ? 1 : 0;
         user.api_key = config.api_key;
-        await db.saveUser(user);
+        await GutDB.saveUser(user);
 
         // Also save legacy key for safety if some parts still read it directly from storage
-        if (config.api_key) localStorage.setItem('openai_api_key', config.api_key);
+        if (config.api_key) {
+            localStorage.setItem('openai_api_key', config.api_key);
+        } else {
+            localStorage.removeItem('openai_api_key');
+        }
 
-        if (DataService.mode === 'HYBRID' && DataService.isAuthenticated) {
+        if (syncToServer && DataService.mode === 'HYBRID' && DataService.isAuthenticated) {
             await fetch('api.php?endpoint=update_settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -135,6 +191,7 @@ export const DataService = {
                     debug_mode: debugMode ? 1 : 0 
                 })
             });
+            DataService.serverAiConfig = config;
         }
     },
 
@@ -174,129 +231,31 @@ export const DataService = {
     },
 
     getEntry: async (id) => {
-        let entry = await db.getEntry(id);
-        if (!entry && DataService.mode === 'HYBRID' && DataService.isOnline && DataService.isAuthenticated) {
-             try {
-                 const res = await fetch(`api.php?endpoint=entries&id=${id}`);
-                 if (res.ok) {
-                     entry = await res.json();
-                     if (entry && entry.id) {
-                         entry.synced = 1;
-                         await db.addEntry(entry);
-                     }
-                 }
-             } catch(e) { console.warn('Failed to fetch entry from API', e); }
-        }
-        return entry;
+        return await GutDB.getEntry(id);
     },
 
     getEntries: async (limit = 50) => {
-        let entries = [];
-        if (DataService.mode === 'HYBRID' && DataService.isOnline && DataService.isAuthenticated) {
-            try {
-                const res = await fetch(`api.php?endpoint=entries&limit=${limit}`);
-                if (!res.ok) throw new Error('API Error');
-                const apiEntries = await res.json();
-
-                // Merge with local unsynced entries to ensure "pending" items are visible
-                const unsynced = await db.getUnsyncedEntries();
-                
-                // Create a Map for easy merging by ID
-                const entryMap = new Map();
-                apiEntries.forEach(e => entryMap.set(e.id, e));
-                
-                // Overlay unsynced (dirty) entries
-                unsynced.forEach(e => {
-                    entryMap.set(e.id, e);
-                });
-                
-                entries = Array.from(entryMap.values());
-                
-                // Re-sort by event_at DESC
-                entries.sort((a, b) => {
-                    const dateA = new Date(a.event_at.replace(' ', 'T'));
-                    const dateB = new Date(b.event_at.replace(' ', 'T'));
-                    return dateB - dateA;
-                });
-                
-            } catch (e) {
-                console.warn('API fetch failed, falling back to local DB', e);
-                entries = await db.getEntries(limit);
-            }
-        } else {
-            entries = await db.getEntries(limit);
-        }
+        const entries = await GutDB.getEntries(limit);
         return entries.filter(e => !e.data || !e.data.is_draft);
     },
 
     getDrafts: async () => {
-        const entries = await db.getEntries(50);
-        return entries.filter(e => e.data && e.data.is_draft);
+        return await GutDB.getDrafts();
     },
 
     getCurrentUser: async () => {
-        return await db.getUser(DataService.userId);
+        return await GutDB.getUser(DataService.userId);
     },
 
     saveEntry: async (entry) => {
-        let savedEntry = { ...entry };
-
-        if (DataService.mode === 'HYBRID' && DataService.isOnline && DataService.isAuthenticated) {
-            try {
-                const formData = new FormData();
-                formData.append('type', entry.type);
-                formData.append('event_at', entry.event_at);
-                formData.append('data', JSON.stringify(entry.data));
-                if (entry.id && !String(entry.id).startsWith('local_')) {
-                    formData.append('id', entry.id);
-                }
-                
-                if (entry.image_blob) {
-                    formData.append('image', entry.image_blob);
-                }
-
-                const res = await fetch('api.php?endpoint=entry', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (!res.ok) throw new Error('API Save Failed');
-                const result = await res.json();
-                savedEntry.id = Number(result.id); 
-                savedEntry.synced = 1;
-                
-                if (result.image_path) {
-                    savedEntry.data = savedEntry.data || {};
-                    savedEntry.data.image_path = result.image_path;
-                }
-                
-            } catch (e) {
-                console.error('Save to API failed, saving locally.', e);
-                savedEntry.synced = 0;
-            }
-        } else {
-            savedEntry.synced = 0;
+        if (entry.user_id === undefined || entry.user_id === null) {
+            entry.user_id = DataService.userId;
         }
-
-        if (!savedEntry.id) delete savedEntry.id;
-
-        savedEntry.user_id = DataService.userId;
-        const localId = await db.addEntry(savedEntry);
-        if (!savedEntry.id && localId) savedEntry.id = localId;
-        return savedEntry;
+        return await GutDB.saveEntry(entry);
     },
 
     deleteEntry: async (id) => {
-        if (DataService.mode === 'HYBRID' && DataService.isOnline && DataService.isAuthenticated) {
-            try {
-                await fetch('api.php?endpoint=delete', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id })
-                });
-            } catch (e) { console.warn('API delete failed'); }
-        }
-        await db.deleteEntry(id);
+        await GutDB.deleteEntry(id);
     },
     
     // AI Proxies
@@ -557,7 +516,9 @@ Schema (Object Structure):
                  ...payload
              };
              
-             return DataService._directOpenAICall('chat/completions', openAiBody);
+             const response = await DataService._directOpenAICall('chat/completions', openAiBody);
+             await DataService._logAiDebug(payload, response, 'direct');
+             return response;
          } else {
              // Proxy Mode (Server injects key)
              const body = { 
@@ -581,8 +542,41 @@ Schema (Object Structure):
                  throw new Error('AI returned an empty response.');
              }
 
+             await DataService._logAiDebug(payload, data, 'proxy');
              return data;
          }
+    },
+
+    _logAiDebug: async (payload, response, source = 'direct') => {
+        if (!DataService.debugMode || DataService.mode !== 'HYBRID' || !DataService.isAuthenticated) {
+            return;
+        }
+
+        try {
+            const lastMsg = payload.messages ? payload.messages[payload.messages.length - 1] : null;
+            let promptText = lastMsg ? lastMsg.content : 'Unknown';
+            if (Array.isArray(promptText)) {
+                promptText = 'Complex Content (Vision)';
+            }
+
+            const responseText = response?.choices?.[0]?.message?.content ?? JSON.stringify(response);
+
+            await fetch('api.php?endpoint=log_debug', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: `ai_${source}`,
+                    message: 'AI Request',
+                    context: {
+                        prompt: promptText,
+                        response: responseText
+                    }
+                }),
+                credentials: 'include'
+            });
+        } catch (e) {
+            console.warn('Failed to write debug log', e);
+        }
     },
 
     _directOpenAICall: async (endpoint, body, isFormData = false) => {
@@ -623,20 +617,65 @@ Schema (Object Structure):
         return { logs: [] };
     },
 
-    sync: async () => { console.log('Syncing...'); },
+    sync: async () => {
+        if (DataService._syncInProgress) return;
+        if (DataService.mode !== 'HYBRID' || !DataService.isAuthenticated) return;
+        if (!navigator.onLine) return;
 
-    getPendingUploads: async () => { return await db.getUnsyncedEntries(); },
+        DataService._syncInProgress = true;
+        try {
+            const unsynced = await DataService.getPendingUploads();
+            if (unsynced && unsynced.length > 0) {
+                await DataService.uploadEntries(unsynced);
+            }
+
+            // Refresh local cache (simple merge: local unsynced overlays remote)
+            await GutDB.getEntries(200);
+        } catch (e) {
+            console.warn('DataService sync failed', e);
+        } finally {
+            DataService._syncInProgress = false;
+        }
+    },
+
+    getPendingUploads: async () => { return await GutDB.getUnsynced(); },
 
     uploadEntries: async (entries) => {
-        if (!DataService.mode === 'HYBRID' || !DataService.isAuthenticated) return;
+        if (DataService.mode !== 'HYBRID' || !DataService.isAuthenticated) return;
         let count = 0;
         for (const entry of entries) {
             try {
                 const entryToSave = { ...entry };
-                delete entryToSave.id; 
-                delete entryToSave.synced; 
-                await DataService.saveEntry(entryToSave);
-                await db.deleteEntry(entry.id);
+                delete entryToSave.synced;
+
+                let shouldCreate = !!entryToSave.local_only;
+                if (!shouldCreate && entryToSave.id && !entryToSave.server_id) {
+                    try {
+                        const remote = await fetch(`api.php?endpoint=entries&id=${entryToSave.id}`, {
+                            credentials: 'include'
+                        });
+                        if (remote.ok) {
+                            entryToSave.server_id = entryToSave.id;
+                            entryToSave.local_only = false;
+                        } else {
+                            shouldCreate = true;
+                        }
+                    } catch (e) {
+                        shouldCreate = true;
+                    }
+                }
+
+                if (shouldCreate) {
+                    delete entryToSave.id;
+                    delete entryToSave.server_id;
+                }
+
+                const saved = await GutDB.saveEntry(entryToSave);
+
+                if (shouldCreate && entry.id && saved && saved.id && saved.id !== entry.id) {
+                    // Remove old local-only entry without touching server
+                    await GutDB.deleteLocalEntry(entry.id);
+                }
                 count++;
             } catch (e) { console.error("Failed to sync entry", entry, e); }
         }

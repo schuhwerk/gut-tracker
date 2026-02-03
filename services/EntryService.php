@@ -10,7 +10,7 @@ class EntryService {
     public function getEntries($userId, $limit = 50, $days = null) {
         if ($days) {
             $date = date('Y-m-d H:i:s', strtotime("-$days days"));
-            $stmt = $this->pdo->prepare("SELECT * FROM entries WHERE user_id = ? AND event_at >= ? ORDER BY event_at DESC, id DESC");
+            $stmt = $this->pdo->prepare("SELECT * FROM entries WHERE user_id = ? AND event_at >= ? ORDER BY event_at DESC, id DESC LIMIT " . (int)$limit);
             $stmt->execute([$userId, $date]);
         } else {
             $stmt = $this->pdo->prepare("SELECT * FROM entries WHERE user_id = ? ORDER BY event_at DESC, id DESC LIMIT " . (int)$limit);
@@ -63,6 +63,42 @@ class EntryService {
         $stmt = $this->pdo->prepare("DELETE FROM entries WHERE id = ? AND user_id = ?");
         $stmt->execute([$id, $userId]);
         return $stmt->rowCount() > 0;
+    }
+
+    public function importEntries($userId, $entries) {
+        $this->pdo->beginTransaction();
+        try {
+            $stmt = $this->pdo->prepare("INSERT INTO entries (user_id, type, event_at, data, created_at) VALUES (?, ?, ?, ?, ?)");
+            $count = 0;
+            foreach ($entries as $entry) {
+                // Basic validation
+                if (empty($entry['type']) || empty($entry['event_at'])) {
+                    continue;
+                }
+                
+                // Handle data array vs string
+                $data = $entry['data'] ?? [];
+                if (is_array($data)) {
+                    $data = json_encode($data);
+                }
+                
+                $createdAt = $entry['created_at'] ?? gmdate('Y-m-d H:i:s');
+
+                $stmt->execute([
+                    $userId,
+                    $entry['type'],
+                    $entry['event_at'],
+                    $data,
+                    $createdAt
+                ]);
+                $count++;
+            }
+            $this->pdo->commit();
+            return $count;
+        } catch (Exception $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
     }
 
     public function deleteAllEntries($userId) {

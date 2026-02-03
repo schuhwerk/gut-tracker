@@ -1,0 +1,57 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run PHP Server",
+            "type": "shell",
+            "command": "php -S localhost:8085",
+            "problemMatcher": [],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            }
+        },
+{
+    "label": "playwright test",
+    "type": "shell",
+    // 1. Explicitly call the shell (zsh or bash)
+    "command": "/bin/zsh", 
+"args": [
+    "-ic",
+    "export PATH=\"$HOME/.bun/bin:$(dirname $(nvm which current)):$PATH\"; bunx playwright test"
+],
+    "problemMatcher": [],
+    "group": {
+        "kind": "test",
+        "isDefault": false
+    },
+    // 3. Optional: formatting options to handle output correctly
+    "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared"
+    }
+},
+        {
+            "label": "php-test",
+            "type": "shell",
+            "command": "bash tests/run_tests.sh",
+            "problemMatcher": [],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "version-update",
+            "type": "shell",
+            "command": "bash update_version.sh",
+            "problemMatcher": []
+        }
+    ]
+}

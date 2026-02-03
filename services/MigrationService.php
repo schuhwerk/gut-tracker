@@ -21,6 +21,12 @@ class MigrationService {
                 if (!in_array('ai_config', $cols)) {
                     $pdo->exec("ALTER TABLE users ADD COLUMN ai_config TEXT DEFAULT NULL");
                 }
+            },
+            '20240117_001_rename_recorded_at' => function($pdo) {
+                $cols = self::getTableColumns($pdo, 'entries');
+                if (in_array('recorded_at', $cols) && !in_array('event_at', $cols)) {
+                    $pdo->exec("ALTER TABLE entries RENAME COLUMN recorded_at TO event_at");
+                }
             }
         ];
     }

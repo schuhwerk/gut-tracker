@@ -1,5 +1,6 @@
 import { utils } from './utils.js';
 import { DataService } from './data-service.js';
+import { GutDB } from './gut-db.js';
 import { UI } from './ui-renderer.js';
 import { Router } from './router.js';
 
@@ -164,13 +165,29 @@ const app = {
                  app.hideLoading();
              }
              
-             await DataService.saveSettings(config, debugMode);
-             alert('Settings saved and verified.');
+             await DataService.saveSettings(config, debugMode, false);
+             alert('Local settings saved.');
              Router.navigate('settings');
          } catch (e) {
              app.hideLoading();
              alert('Verification failed: ' + e.message + '\n\nSettings NOT saved.');
          }
+    },
+
+    clearLocalKey: async () => {
+        if (!confirm('Clear the API key stored locally on this device?')) return;
+        const debugMode = document.getElementById('debug-mode').checked;
+        const config = {
+            provider: document.getElementById('ai-provider').value,
+            api_key: '',
+            base_url: document.getElementById('ai-base-url').value.trim(),
+            model: document.getElementById('ai-model').value.trim()
+        };
+
+        await DataService.saveSettings(config, debugMode, false);
+        document.getElementById('api-key').value = '';
+        alert('Local API key cleared.');
+        Router.navigate('settings');
     },
 
     checkPendingUploads: async () => {
@@ -214,6 +231,8 @@ const app = {
              app.prepareAddView(viewId);
         } else if (viewId === 'magic-input') {
              app.renderMagicList();
+        } else if (viewId === 'logs') {
+            app.renderLogs();
         } else if (viewId === 'settings') {
             // Populate Settings
             const config = DataService.aiConfig || {};
@@ -241,15 +260,72 @@ const app = {
 
             const logoutBtn = document.getElementById('btn-logout');
             const loginBtn = document.getElementById('btn-login-settings');
-            const profileSync = document.getElementById('profile-sync-section');
+            const profileSyncNote = document.getElementById('profile-sync-note');
+            const saveAccountKeyBtn = document.getElementById('btn-save-account-key');
+            const removeAccountKeyBtn = document.getElementById('btn-remove-account-key');
+            const saveLocalKeyBtn = document.getElementById('btn-save-local-key');
+            const clearLocalKeyBtn = document.getElementById('btn-clear-local-key');
+            const syncNowSection = document.getElementById('sync-now-section');
             const logsBtn = document.getElementById('btn-show-logs');
             const userInfoBox = document.getElementById('user-info-settings');
             const usernameSpan = document.getElementById('settings-username');
+            const apiKeyInput = document.getElementById('api-key');
+
+            const updateProfileSyncVisibility = () => {
+                const hasServerProfile = DataService.mode === 'HYBRID' && DataService.isAuthenticated;
+                const serverKey = DataService.serverAiConfig?.api_key || '';
+                const inputKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+                const localKey = DataService.aiConfig?.api_key || '';
+                const hasStoredServerKey = !!serverKey;
+                const hasInputKey = !!inputKey;
+                const hasLocalKey = !!localKey;
+
+                if (saveLocalKeyBtn) {
+                    if (hasInputKey && inputKey !== localKey) {
+                        saveLocalKeyBtn.classList.remove('hidden');
+                    } else {
+                        saveLocalKeyBtn.classList.add('hidden');
+                    }
+                }
+
+                if (clearLocalKeyBtn) {
+                    if (hasLocalKey) {
+                        clearLocalKeyBtn.classList.remove('hidden');
+                    } else {
+                        clearLocalKeyBtn.classList.add('hidden');
+                    }
+                }
+
+                if (!hasServerProfile) {
+                    if (profileSyncNote) profileSyncNote.classList.add('hidden');
+                    if (saveAccountKeyBtn) saveAccountKeyBtn.classList.add('hidden');
+                    if (removeAccountKeyBtn) removeAccountKeyBtn.classList.add('hidden');
+                    return;
+                }
+
+                if (profileSyncNote) profileSyncNote.classList.remove('hidden');
+
+                if (saveAccountKeyBtn) {
+                    if (hasInputKey && (!hasStoredServerKey || inputKey !== serverKey)) {
+                        saveAccountKeyBtn.classList.remove('hidden');
+                    } else {
+                        saveAccountKeyBtn.classList.add('hidden');
+                    }
+                }
+
+                if (removeAccountKeyBtn) {
+                    if (hasStoredServerKey) {
+                        removeAccountKeyBtn.classList.remove('hidden');
+                    } else {
+                        removeAccountKeyBtn.classList.add('hidden');
+                    }
+                }
+            };
 
             if (DataService.isAuthenticated) {
                 if(logoutBtn) logoutBtn.classList.remove('hidden');
                 if(loginBtn) loginBtn.classList.add('hidden');
-                if(profileSync) profileSync.classList.remove('hidden');
+                if(syncNowSection) syncNowSection.classList.remove('hidden');
                 if (DataService.debugMode && logsBtn) logsBtn.classList.remove('hidden');
                 
                 try {
@@ -258,12 +334,18 @@ const app = {
                     if(userInfoBox) userInfoBox.classList.remove('hidden');
                 } catch(e) { }
 
+                updateProfileSyncVisibility();
             } else {
                 if(logoutBtn) logoutBtn.classList.add('hidden');
                 if(loginBtn) loginBtn.classList.remove('hidden');
-                if(profileSync) profileSync.classList.add('hidden');
+                if(syncNowSection) syncNowSection.classList.add('hidden');
                 if(logsBtn) logsBtn.classList.add('hidden');
                 if(userInfoBox) userInfoBox.classList.add('hidden');
+                updateProfileSyncVisibility();
+            }
+
+            if (apiKeyInput) {
+                apiKeyInput.oninput = updateProfileSyncVisibility;
             }
         }
     },
@@ -294,6 +376,8 @@ const app = {
         
         let waterToday = 0;
         let hasFeelingLog = false;
+        let hasSleepLog = false;
+        let hasActivityLog = false;
 
         entries.forEach(e => {
             const localDate = utils.fromUTC(e.event_at);
@@ -305,6 +389,12 @@ const app = {
             if ((e.type === 'feeling' || e.type === 'symptom') && (dateStr === todayISO)) {
                 hasFeelingLog = true;
             }
+            if (e.type === 'sleep' && dateStr === todayISO) {
+                hasSleepLog = true;
+            }
+            if (e.type === 'activity' && dateStr === todayISO) {
+                hasActivityLog = true;
+            }
         });
         document.getElementById('hydration-label').innerText = `${waterToday.toFixed(1)} / 2.5L`;
         document.getElementById('hydration-bar').style.width = Math.min(100, (waterToday / 2.5) * 100) + '%';
@@ -313,6 +403,26 @@ const app = {
         if (dot) {
              if (now.getHours() >= 15 && !hasFeelingLog) dot.classList.remove('hidden');
              else dot.classList.add('hidden');
+        }
+
+        const missingDailyBtn = document.getElementById('missing-daily-btn');
+        if (missingDailyBtn) {
+            const dayProgress = (now.getHours() + (now.getMinutes() / 60)) / 24;
+            const missingItems = [];
+            if (!hasFeelingLog) missingItems.push('Feeling');
+            if (!hasSleepLog) missingItems.push('Sleep');
+            if (!hasActivityLog) missingItems.push('Activity');
+            const showMissingNotice = dayProgress >= 0.5 && missingItems.length > 0;
+
+            if (showMissingNotice) {
+                missingDailyBtn.classList.remove('hidden');
+                missingDailyBtn.onclick = () => {
+                    alert(`Missing today: ${missingItems.join(', ')}`);
+                };
+            } else {
+                missingDailyBtn.classList.add('hidden');
+                missingDailyBtn.onclick = null;
+            }
         }
         
         UI.renderTimeline(entries, 'timeline', app.lastSavedId);
@@ -341,7 +451,7 @@ const app = {
         try {
             const newEntry = {
                 ...originalEntry,
-                id: null,
+                id: undefined,
                 event_at: utils.toUTC(new Date()),
                 created_at: utils.toUTC(new Date()),
                 synced: 0 
@@ -573,7 +683,7 @@ const app = {
             const formId = `form-${type}`;
             
             let entry = {
-                id: formData.get('id') ? Number(formData.get('id')) : null,
+                id: formData.get('id') ? Number(formData.get('id')) : undefined,
                 type: type,
                 event_at: utils.toUTC(formData.get('event_at')),
                 data: {},
@@ -718,7 +828,7 @@ const app = {
                  p.nextElementSibling.value = target.dataset.val;
              });
          });
-         
+
          document.addEventListener('keydown', (e) => {
             if (e.ctrlKey && e.key === 'Enter') {
                 const form = document.activeElement?.closest('form');
@@ -727,6 +837,8 @@ const app = {
          });
          
          window.app = app;
+         window.DataService = DataService;
+         window.GutDB = GutDB;
     },
 
     removeImage: (btn) => {
@@ -836,7 +948,6 @@ const app = {
         UI.toggleLoading(false);
 
         Router.navigate('magic-input');
-        app.renderMagicList();
     },
     
     renderMagicList: async () => {
@@ -1238,29 +1349,109 @@ const app = {
         } catch(e) { alert('Failed: ' + e.message); }
     },
 
+    syncNow: async () => {
+        if (!DataService.isAuthenticated) {
+            alert('Login required to sync.');
+            return;
+        }
+
+        try {
+            app.showLoading('Syncing...');
+            await DataService.sync();
+            await app.loadEntries();
+        } catch (e) {
+            console.error(e);
+            alert('Sync failed: ' + (e.message || e));
+        } finally {
+            app.hideLoading();
+        }
+    },
+
     exportData: async () => {
         const entries = await DataService.getEntries(5000);
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(entries));
+        const exportDate = utils.formatISO(new Date()).split('T')[0].slice(2);
         const downloadAnchorNode = document.createElement('a');
         downloadAnchorNode.setAttribute("href",     dataStr);
-        downloadAnchorNode.setAttribute("download", "gut_tracker_export.json");
+        downloadAnchorNode.setAttribute("download", `gut_tracker_export_${exportDate}.json`);
         document.body.appendChild(downloadAnchorNode);
         downloadAnchorNode.click();
         downloadAnchorNode.remove();
+    },
+
+    importData: () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'application/json';
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (!confirm('Importing will add new entries. Continue?')) return;
+
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                try {
+                    const json = JSON.parse(event.target.result);
+                    if (!Array.isArray(json)) throw new Error('Invalid format: Root must be an array');
+                    
+                    app.showLoading('Importing...');
+                    
+                    if (DataService.mode === 'HYBRID' && DataService.isAuthenticated) {
+                        const res = await fetch('api.php?endpoint=import', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(json)
+                        });
+                        const data = await res.json();
+                        if (data.error) throw new Error(data.error);
+                        alert(data.message);
+                    } else {
+                        // Local import
+                        let count = 0;
+                        for (const entry of json) {
+                             if (entry.id) delete entry.id; // New ID for local db
+                             await DataService.saveEntry(entry);
+                             count++;
+                        }
+                        alert(`Imported ${count} entries locally.`);
+                    }
+                    
+                    app.hideLoading();
+                    app.loadEntries();
+                } catch (err) {
+                    app.hideLoading();
+                    alert('Import Failed: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        };
+        input.click();
     },
 
     exportDataForAI: async () => {
         const entries = await DataService.getEntries(5000);
         
         const output = utils.generateAIExport(entries);
-
-        const dataStr = "data:text/plain;charset=utf-8," + encodeURIComponent(output);
+        const utf8Bom = '\uFEFF';
+        const blob = new Blob([utf8Bom + output], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const exportDate = utils.formatISO(new Date()).split('T')[0].slice(2);
         const downloadAnchorNode = document.createElement('a');
-        downloadAnchorNode.setAttribute("href",     dataStr);
-        downloadAnchorNode.setAttribute("download", "gut_tracker_ai_export.txt");
+        downloadAnchorNode.setAttribute("href", url);
+        downloadAnchorNode.setAttribute("download", `gut_tracker_ai_export_${exportDate}.txt`);
         document.body.appendChild(downloadAnchorNode);
         downloadAnchorNode.click();
         downloadAnchorNode.remove();
+        URL.revokeObjectURL(url);
+    },
+
+    loadDiagram: async () => {
+        const entries = await DataService.getEntries(5000);
+        if (!entries || entries.length === 0) {
+            return;
+        }
+        UI.renderCharts(entries);
     },
 
     deleteAllData: async () => {
@@ -1268,10 +1459,7 @@ const app = {
         if (!confirm('Are you REALLY sure?')) return;
         
         try {
-            if (DataService.mode === 'HYBRID' && DataService.isAuthenticated) {
-                await fetch('api.php?endpoint=delete_all', { method: 'POST' });
-            }
-            await db.clearAll();
+            await GutDB.deleteAll();
             alert('All data deleted.');
             window.location.reload();
         } catch (e) {
@@ -1371,10 +1559,10 @@ const app = {
          alert('Use the magic voice button for now!');
     },
 
-    showLogs: async () => {
+    renderLogs: async () => {
         const container = document.getElementById('logs-content');
+        if (!container) return;
         container.innerHTML = '<p class="text-center text-gray-500">Loading...</p>';
-        app.navigate('logs');
         
         try {
             const data = await DataService.getLogs();
@@ -1414,6 +1602,10 @@ const app = {
         } catch (e) {
             container.innerHTML = `<p class="text-center text-red-400">Error loading logs: ${e.message}</p>`;
         }
+    },
+
+    showLogs: async () => {
+        app.navigate('logs');
     }
 };
 

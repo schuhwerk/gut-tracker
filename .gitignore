@@ -1,9 +1,10 @@
 uploads/*
 uploads
-.vscode/*
+.vscode/sftp.json
 tests/api_key.json
 tests/cookie.txt
 gut_tracker.sqlite
 gut_tracker.wal
 *.code-workspace
 *.log
+node_modules/

@@ -42,3 +42,38 @@ input[type="range"]::-webkit-slider-runnable-track {
 .new-entry-highlight {
     animation: highlight-fade 2s ease-out;
 }
+
+.password-mask {
+    -webkit-text-security: disc;
+    text-security: disc;
+}
+
+.hydration-bar-empty {
+    width: 0%;
+}
+
+/* Custom scrollbar for dark mode */
+body::-webkit-scrollbar {
+    width: 8px;
+}
+
+body::-webkit-scrollbar-track {
+    background: #121212;
+}
+
+body::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 4px;
+}
+
+.no-tap-highlight {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* SVG Icons classes */
+.icon {
+    width: 24px;
+    height: 24px;
+    display: inline-block;
+    vertical-align: middle;
+}

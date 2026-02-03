@@ -51,8 +51,6 @@ $pdo = null;
 
 $testDescriptions = [
     'test_ai.php' => 'Validation of AI parsing endpoint inputs',
-    'test_ai_export.php' => 'Validation of AI-optimized text export format',
-    'test_ai_features.php' => 'Validation for multimodal AI endpoints (Vision, Voice)',
     'test_ai_live.php' => 'Live integration test with Gemini AI',
     'test_api.php' => 'Core API functionality (CRUD for entries)',
     'test_create_user_repro.php' => 'Reproduction for user creation edge cases',

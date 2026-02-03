@@ -157,7 +157,11 @@ export const db = {
             // Enforce Schema
             entry = enforceSchema(entry, 'entries');
 
-            entry.synced = 0;
+            if (!entry.id) delete entry.id;
+
+            if (entry.synced === undefined) {
+                entry.synced = 0;
+            }
             // Only set created_at for new entries
             if (!entry.created_at && !entry.id) {
                 entry.created_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -169,7 +173,7 @@ export const db = {
     updateEntry: async (entry) => {
         return db.tx('entries', 'readwrite', (store) => {
             entry = enforceSchema(entry, 'entries');
-            entry.synced = 0; // Mark as dirty on update
+            if (entry.synced === undefined) entry.synced = 0; // Mark as dirty on update only if not specified
             return store.put(entry);
         });
     },
@@ -182,7 +186,7 @@ export const db = {
         return db.tx('entries', 'readonly', (store) => store.get(Number(id)));
     },
 
-    getEntries: async (limit = 50) => {
+    getEntries: async (limit = 50, userId = null) => {
         const dbInstance = await db.open();
         return new Promise((resolve, reject) => {
             const transaction = dbInstance.transaction('entries', 'readonly');
@@ -194,7 +198,13 @@ export const db = {
             request.onsuccess = (event) => {
                 const cursor = event.target.result;
                 if (cursor && results.length < limit) {
-                    results.push(cursor.value);
+                    const entry = cursor.value;
+                    const entryUserId = entry.user_id || 0;
+                    const targetUserId = userId === null ? null : (userId || 0);
+                    
+                    if (targetUserId === null || entryUserId == targetUserId) {
+                        results.push(entry);
+                    }
                     cursor.continue();
                 } else {
                     resolve(results);
@@ -208,14 +218,31 @@ export const db = {
          return db.tx('entries', 'readonly', store => store.getAll());
     },
 
-    getUnsyncedEntries: async () => {
+    getUnsyncedEntries: async (userId = null) => {
         const dbInstance = await db.open();
         return new Promise((resolve, reject) => {
             const transaction = dbInstance.transaction('entries', 'readonly');
             const store = transaction.objectStore('entries');
             const index = store.index('synced');
-            const request = index.getAll(0); // 0 = not synced
-            request.onsuccess = () => resolve(request.result);
+            // Using a cursor to allow filtering by userId easily
+            const request = index.openCursor(IDBKeyRange.only(0)); // 0 = not synced
+            const results = [];
+
+            request.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    const entry = cursor.value;
+                    const entryUserId = entry.user_id || 0;
+                    const targetUserId = userId === null ? null : (userId || 0);
+                    
+                    if (targetUserId === null || entryUserId == targetUserId) {
+                        results.push(entry);
+                    }
+                    cursor.continue();
+                } else {
+                    resolve(results);
+                }
+            };
             request.onerror = () => reject(request.error);
         });
     },
@@ -239,6 +266,19 @@ export const db = {
         // Enforce Schema
         user = enforceSchema(user, 'users');
         return db.tx('users', 'readwrite', store => store.put(user));
+    },
+
+    saveEntries: async (entries) => {
+        return db.tx('entries', 'readwrite', (store) => {
+            entries.forEach(entry => {
+                if (typeof entry.data === 'string') {
+                    try { entry.data = JSON.parse(entry.data); } catch(e){}
+                }
+                entry = enforceSchema(entry, 'entries');
+                entry.synced = 1; 
+                store.put(entry);
+            });
+        });
     },
 
     getUser: async (id) => {

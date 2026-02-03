@@ -17,6 +17,11 @@ function jsonResponse($data, $code = 200) {
     if (!empty($output)) {
         error_log("Unexpected output before jsonResponse: " . $output);
     }
+
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        session_write_close();
+    }
+
     http_response_code($code);
     echo json_encode($data);
     exit;
@@ -409,6 +414,25 @@ if ($method === 'GET' && $endpoint === 'entries') {
     jsonResponse($entries);
 }
 
+if ($method === 'POST' && $endpoint === 'import') {
+    requireAuth();
+    $userId = $_SESSION['user_id'];
+    
+    $inputJSON = file_get_contents('php://input');
+    $entries = json_decode($inputJSON, true);
+    
+    if (!is_array($entries)) {
+        jsonResponse(['error' => 'Invalid JSON data'], 400);
+    }
+    
+    try {
+        $count = $entryService->importEntries($userId, $entries);
+        jsonResponse(['message' => "Successfully imported $count entries"]);
+    } catch (Exception $e) {
+        jsonResponse(['error' => 'Import failed: ' . $e->getMessage()], 500);
+    }
+}
+
 if ($method === 'GET' && $endpoint === 'export') {
     requireAuth();
     $userId = $_SESSION['user_id'];
@@ -530,6 +554,32 @@ if ($method === 'GET' && $endpoint === 'get_logs') {
     $stmt = $pdo->prepare("SELECT * FROM logs WHERE user_id = ? ORDER BY id DESC LIMIT 20");
     $stmt->execute([$userId]);
     jsonResponse(['logs' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+}
+
+if ($method === 'POST' && $endpoint === 'log_debug') {
+    requireAuth();
+    $userId = $_SESSION['user_id'];
+
+    $type = $input['type'] ?? 'client_ai';
+    $message = $input['message'] ?? '';
+    $context = $input['context'] ?? null;
+
+    if (!$message) {
+        jsonResponse(['error' => 'Missing message'], 400);
+    }
+
+    $contextJson = $context;
+    if (is_array($context)) {
+        $contextJson = json_encode($context);
+    }
+
+    $logStmt = $pdo->prepare("INSERT INTO logs (user_id, type, message, context) VALUES (?, ?, ?, ?)");
+    $logStmt->execute([$userId, $type, $message, $contextJson]);
+
+    // Cleanup logs
+    $pdo->prepare("DELETE FROM logs WHERE user_id = ? AND id NOT IN (SELECT id FROM logs WHERE user_id = ? ORDER BY id DESC LIMIT 500)")->execute([$userId, $userId]);
+
+    jsonResponse(['message' => 'Log saved']);
 }
 
 if ($method === 'GET' && $endpoint === 'check_auth') {
